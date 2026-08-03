@@ -256,12 +256,12 @@ function loadO(t){try{return JSON.parse(localStorage.getItem(sk(t))||'{}')}catch
 function saveO(t,d){localStorage.setItem(sk(t),JSON.stringify(d));flashSaved();pushToFB();}
 
 // ── FIREBASE REALTIME DATABASE ─────────────────────────────
-const _FB_URL = 'https://grupofamiliaguerra-9d13e-default-rtdb.firebaseio.com';
+const _FB_URL = 'https://finan-mrcapas-default-rtdb.firebaseio.com';
 // Firebase SDK WebSocket — substitui REST completamente
 firebase.initializeApp({
-  apiKey:'AIzaSyBdp0xbPdybkjI8D-mp-_uI57qUHxhDXvg',
-  databaseURL:'https://grupofamiliaguerra-9d13e-default-rtdb.firebaseio.com',
-  projectId:'grupofamiliaguerra-9d13e'
+  apiKey:'AIzaSyAsTJTkvOdMAnAhhMc6taoqviqI6pXyEvg',
+  databaseURL:'https://finan-mrcapas-default-rtdb.firebaseio.com',
+  projectId:'finan-mrcapas'
 });
 const _db=firebase.database();
 try{_db.setPersistenceEnabled(true);}catch(e){} // dados sobrevivem reload
