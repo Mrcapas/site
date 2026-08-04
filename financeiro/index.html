@@ -605,7 +605,7 @@ function addEntrada(){
   const data=load('entradas');
   const dt=document.getElementById('e-dt').value;
   if(!dt){notify('Selecione a data','err');return}
-  data.push({id:uuid(),data:dt,din:+document.getElementById('e-din').value||0,pix:+document.getElementById('e-pix').value||0,tpix:+document.getElementById('e-tpix').value||0,cart:+document.getElementById('e-cart').value||0,tcart:+document.getElementById('e-tcart').value||0,getnet:+document.getElementById('e-getnet').value||0,tgetnet:+document.getElementById('e-tgetnet').value||0,ms:0,rend:+document.getElementById('e-rend').value||0,cred:+document.getElementById('e-cred').value||0,cmv:+document.getElementById('e-cmv').value||0,obs:document.getElementById('e-obs').value});
+  data.push({id:uuid(),data:dt,din:+document.getElementById('e-din').value||0,pix:+document.getElementById('e-pix').value||0,tpix:+document.getElementById('e-tpix').value||0,cart:+document.getElementById('e-cart').value||0,tcart:+document.getElementById('e-tcart').value||0,getnet:+(document.getElementById('e-getnet')||{value:0}).value||0,tgetnet:+(document.getElementById('e-tgetnet')||{value:0}).value||0,ms:0,rend:+document.getElementById('e-rend').value||0,cred:+document.getElementById('e-cred').value||0,cmv:+document.getElementById('e-cmv').value||0,obs:document.getElementById('e-obs').value});
   data.sort((a,b)=>a.data.localeCompare(b.data));
   save('entradas',data);notify('Entrada registrada!','ok');renderEntradas();
 }
