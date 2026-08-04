@@ -164,6 +164,8 @@ body.dark-mode .mkBg-high{background:#052010!important}
     <div style="padding:10px 10px 4px">
       <select class="empresa-sel" id="empresa-sel" onchange="changeEmpresa(this.value)">
         <option value="bacaxa">Bacaxá / Saquarema</option>
+<option value="araruama">Araruama (Centro)</option>
+<option value="araruama_mall">Araruama (OpenMall)</option>
       </select>
     </div>
     <div class="sb-section">Visão Geral</div>
@@ -265,7 +267,8 @@ firebase.initializeApp({
 });
 const _db=firebase.database();
 try{_db.setPersistenceEnabled(true);}catch(e){} // dados sobrevivem reload
-const _dbRef=_db.ref('srcapas/bacaxa');
+window._db=_db;
+window._dbRef=_db.ref('srcapas/bacaxa');
 let _syncTimer = null, _lastFBts = 0, _pollId = null, _fbSSE = null, _pushInProgress = false;
 
 function setSyncStatus(msg, cor) {
@@ -393,9 +396,23 @@ function initApp(){
 }
 function changeEmpresa(v){
   ST.empresa=v;
-  const names={bacaxa:'Bacaxá / Saquarema',saquarema:'Saquarema'};
+  const names={bacaxa:'Bacaxá / Saquarema',araruama:'Araruama (Centro)',araruama_mall:'Araruama (OpenMall)'};
   document.getElementById('sb-empresa').textContent=names[v]||v;
+  // Atualizar caminho no Firebase por loja
+  if(window._db){
+    window._dbRef=_db.ref('srcapas/'+v);
+    startRealtimeSync();
+  }
   render();
+}
+// Config por loja: quais bancos existem e onde vai o PIX
+function getStoreConfig(){
+  const isAra=ST.empresa==='araruama'||ST.empresa==='araruama_mall';
+  return{
+    pixBanco: isAra?'pagbank':'infinitepay', // Araruama: PIX no PagBank
+    temInfinitePay: !isAra,                  // Araruama: sem InfinitePay
+    temGetNet: false                          // Removido a partir de Agosto/2026
+  };
 }
 function changePeriod(){
   ST.mes=Number(document.getElementById('sel-mes').value);
@@ -528,9 +545,7 @@ function renderEntradas(){
       <div class="fl"><label>PIX (bruto) R$</label><input class="fi" type="number" step="0.01" id="e-pix" placeholder="0,00" onkeydown="enterNext(event,'e-tpix')"></div>
       <div class="fl"><label>Taxa PIX R$</label><input class="fi" type="number" step="0.01" id="e-tpix" placeholder="0,00" onkeydown="enterNext(event,'e-cart')"></div>
       <div class="fl"><label>Cartão PagBank R$</label><input class="fi" type="number" step="0.01" id="e-cart" placeholder="0,00" onkeydown="enterNext(event,'e-tcart')"></div>
-      <div class="fl"><label>Taxa PagBank R$</label><input class="fi" type="number" step="0.01" id="e-tcart" placeholder="0,00" onkeydown="enterNext(event,'e-getnet')"></div>
-      <div class="fl"><label>Cartão GetNet R$</label><input class="fi" type="number" step="0.01" id="e-getnet" placeholder="0,00" onkeydown="enterNext(event,'e-tgetnet')"></div>
-      <div class="fl"><label>Taxa GetNet R$</label><input class="fi" type="number" step="0.01" id="e-tgetnet" placeholder="0,00" onkeydown="enterNext(event,'e-rend')"></div>
+      <div class="fl"><label>Taxa PagBank R$</label><input class="fi" type="number" step="0.01" id="e-tcart" placeholder="0,00" onkeydown="enterNext(event,'e-rend')"></div>
       <div class="fl"><label>Rendimento R$</label><input class="fi" type="number" step="0.01" id="e-rend" placeholder="0,00" onkeydown="enterNext(event,'e-cred')"></div>
       <div class="fl"><label>Crediário Funcionário R$</label><input class="fi" type="number" step="0.01" id="e-cred" placeholder="0,00" onkeydown="enterNext(event,'e-cmv')"></div>
       <div class="fl"><label>CMV do Dia R$ <span style="font-size:9px;color:var(--gold)">custo merc. vendida</span></label><input class="fi" type="number" step="0.01" id="e-cmv" placeholder="0,00" onkeydown="enterNext(event,'e-obs')"></div>
@@ -733,7 +748,7 @@ function renderSaidas(){
     <div class="fg">
       <div class="fl"><label>Data</label><input class="fi" type="date" id="s-dt" value="${today()}"></div>
       <div class="fl"><label>Categoria</label><select class="fi" id="s-cat">${catO}</select></div>
-      <div class="fl"><label>Banco Débito</label><select class="fi" id="s-banco"><option value="pagbank">PagBank</option><option value="infinitepay">InfinitePay</option><option value="malote">Malote</option><option value="getnet">GetNet</option></select></div>
+      <div class="fl"><label>Banco Débito</label><select class="fi" id="s-banco"><option value="pagbank">PagBank</option>${getStoreConfig().temInfinitePay?"<option value=\"infinitepay\">InfinitePay</option>":""}<option value="malote">Malote</option></select></div>
 <div class="fl"><label>Forma de Pagamento</label><select class="fi" id="s-forma">${fmO}</select></div>
       <div class="fl"><label>Valor R$</label><input class="fi" type="number" step="0.01" id="s-val" placeholder="0,00" onkeydown="enterNext(event,'s-desc')"></div>
       <div class="fl" style="grid-column:span 2"><label>Descrição / Fornecedor</label><input class="fi" type="text" id="s-desc" placeholder="Ex: Conta de luz, Passagem Gerson, Compra Korai..." onkeydown="if(event.key==='Enter'){event.preventDefault();addSaida()}"></div>
@@ -1567,7 +1582,7 @@ function renderDRE(){
   const santander=_sb.getnet; // GetNet líquido
   const maloteB=_sb.malote; // Dinheiro (Malote)
   const infinitepay=_sb.infinitepay; // InfinitePay (PIX)
-  const totalBancos=pagbank+maloteB+santander+infinitepay;
+  const totalBancos=pagbank+maloteB+santander+(getStoreConfig().temInfinitePay?infinitepay:0);
 
   // ── Faturamento
   const fatTotal=t.din+t.pix+t.cart+(t.getnet||0)+t.finVendas+t.rend+t.cred;
@@ -1620,7 +1635,7 @@ function renderDRE(){
 
     ${card(`${H('Bancos','#7FB8C9')}
       ${R('PagBank',pagbank,'pos')}
-      ${R('InfinitePay',infinitepay,'pos')}
+      ${getStoreConfig().temInfinitePay?R('InfinitePay',infinitepay,'pos'):''}
       ${R('Malote (Dinheiro)',maloteB,'pos')}
       ${R('Santander (GetNet)',santander,'pos')}
       ${Rtot('TOTAL',totalBancos,'pos')}`)}
@@ -2672,9 +2687,12 @@ function calcSaldoBancos(){
   const custosPagosB=(v.c||[]).filter(c=>c.st==='PAGO'&&c.cat!=='VALES').reduce((s,c)=>s+(+c.val||0),0);
   const verifB=calcVerifPago();
 
+  const cfg=getStoreConfig();
+  const pixNet=(t.pix-tpixB)-saiBanco('infinitepay');
   return{
-    pagbank:(t.cart-tcartB)+t.rend+t.finRecebido-saiBanco('pagbank')-verifB+tIn('pagbank')-tOut('pagbank'),
-    infinitepay:(t.pix-tpixB)-saiBanco('infinitepay')+tIn('infinitepay')-tOut('infinitepay'),
+    // Araruama: PIX soma no PagBank; Bacaxá: PIX vai pra InfinitePay
+    pagbank:(t.cart-tcartB)+t.rend+t.finRecebido+(cfg.pixBanco==='pagbank'?pixNet:0)-saiBanco('pagbank')-verifB+tIn('pagbank')-tOut('pagbank'),
+    infinitepay:cfg.temInfinitePay?pixNet+tIn('infinitepay')-tOut('infinitepay'):0,
     malote:t.din-saiBanco('malote')+tIn('malote')-tOut('malote'),
     getnet:(t.getnet||0)-tgetnetB-saiBanco('getnet')+tIn('getnet')-tOut('getnet'),
     trans,v,t
@@ -2704,7 +2722,9 @@ function delTransferencia(id){
 function renderBancaria(){
   const {pagbank,infinitepay,malote,getnet,trans}=calcSaldoBancos();
   const saldos={pagbank,infinitepay,malote,getnet};
-  const nomeBanco={pagbank:'PagBank',infinitepay:'InfinitePay',malote:'Malote (Dinheiro)',getnet:'Santander (GetNet)'};
+  const cfg_b=getStoreConfig();
+  const nomeBancoFull={pagbank:'PagBank',infinitepay:'InfinitePay',malote:'Malote (Dinheiro)',getnet:'Santander (GetNet)'};
+  const nomeBanco=Object.fromEntries(Object.entries(nomeBancoFull).filter(([k])=>k!=='infinitepay'||cfg_b.temInfinitePay));
   const corBanco={pagbank:'#4A90D9',infinitepay:'#7FC47F',malote:'#C8A86B',getnet:'#E05252'};
   const c=document.getElementById('content');
 
