@@ -240,7 +240,9 @@ const CREDS_EXTRA=[
 ];
 const MESES=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 const PARCEIROS=['UME','Payjoy','Moeda Social','Brasilcard','Parcelex','Crefaz'];
-const CAT_SAIDA=['Despesa Operacional','Verificação Escritório','Compra Mercadoria','Marketing','Tributo','Pessoal','Erro de Caixa','Perda','Estorno','Outro'];
+const CAT_SAIDA=['Despesa Operacional','Verificação Escritório','Compra Mercadoria','Frete','Marketing','Tributo','Pessoal','Erro de Caixa','Perda','Estorno','Outro'];
+const CAT_SAIDA_COMPRAS=['Compra Mercadoria','Frete'];
+const CAT_SAIDA_DESPESAS=CAT_SAIDA.filter(c=>!CAT_SAIDA_COMPRAS.includes(c));
 const FORMAS=['PIX','Dinheiro','Cartão','Boleto','Débito Automático'];
 const NOW=new Date();
 const ST={tab:'dashboard',empresa:'bacaxa',mes:NOW.getMonth()+1,ano:NOW.getFullYear()};
@@ -680,14 +682,16 @@ function editSaida(id){
   if(!r)return;
   const catO=CAT_SAIDA.map(x=>({v:x,l:x}));
   const fmO=FORMAS.map(x=>({v:x,l:x}));
+  const bancoO=[{v:'pagbank',l:'PagBank'}].concat(getStoreConfig().temInfinitePay?[{v:'infinitepay',l:'InfinitePay'}]:[]).concat([{v:'malote',l:'Malote'}]);
   showEditModal('Editar Saída',[
     {id:'data',label:'Data',type:'date',value:r.data},
     {id:'cat',label:'Categoria',type:'select',value:r.cat,options:catO},
+    {id:'banco',label:'Banco Débito',type:'select',value:r.banco||'pagbank',options:bancoO},
     {id:'forma',label:'Forma de Pagamento',type:'select',value:r.forma,options:fmO},
     {id:'val',label:'Valor R$',type:'number',value:r.val},
     {id:'desc',label:'Descrição',type:'text',value:r.desc||''},
   ],vals=>{
-    r.data=vals.data;r.cat=vals.cat;r.forma=vals.forma;r.val=vals.val;r.desc=vals.desc;
+    r.data=vals.data;r.cat=vals.cat;r.banco=vals.banco;r.forma=vals.forma;r.val=vals.val;r.desc=vals.desc;
     data.sort((a,b)=>a.data.localeCompare(b.data));
     save('saidas',data);notify('Saída atualizada!','ok');renderSaidas();
   });
@@ -731,16 +735,30 @@ function editCusto(id){
 
 // SAIDAS
 let filtroSaida='';
+let filtroGrupoSaida='';
 function renderSaidas(){
   const todos=load('saidas');
-  const data=filtroSaida?todos.filter(r=>r.cat===filtroSaida):todos;
+  let data;
+  if(filtroSaida){
+    data=todos.filter(r=>r.cat===filtroSaida);
+  }else if(filtroGrupoSaida==='COMPRAS'){
+    data=todos.filter(r=>CAT_SAIDA_COMPRAS.includes(r.cat));
+  }else if(filtroGrupoSaida==='DESPESAS'){
+    data=todos.filter(r=>CAT_SAIDA_DESPESAS.includes(r.cat));
+  }else{
+    data=todos;
+  }
   const c=document.getElementById('content');
-  const catO=CAT_SAIDA.map(x=>`<option value="${x}">${x}</option>`).join('');
+  const catO='<optgroup label="Despesas">'+CAT_SAIDA_DESPESAS.map(x=>`<option value="${x}">${x}</option>`).join('')+'</optgroup><optgroup label="Compras">'+CAT_SAIDA_COMPRAS.map(x=>`<option value="${x}">${x}</option>`).join('')+'</optgroup>';
   const fmO=FORMAS.map(x=>`<option value="${x}">${x}</option>`).join('');
 
   // Totais por categoria para os filtros
   const totCat={};todos.forEach(r=>{totCat[r.cat]=(totCat[r.cat]||0)+(+r.val||0)});
-  const filtros=['',  ...CAT_SAIDA.filter(c=>totCat[c])].map(cat=>
+  const grupoBtn=(g,label)=>`<button onclick="filtroGrupoSaida='${g}';filtroSaida='';renderSaidas()" style="padding:7px 16px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;border-radius:20px;cursor:pointer;border:2px solid ${filtroGrupoSaida===g?'var(--gold)':'var(--border)'};background:${filtroGrupoSaida===g?'var(--gold-bg)':'transparent'};color:${filtroGrupoSaida===g?'var(--gold)':'var(--text)'};font-family:'DM Sans',sans-serif;white-space:nowrap">${label}</button>`;
+  const gruposHtml=grupoBtn('','Todos')+grupoBtn('DESPESAS','💸 Despesas')+grupoBtn('COMPRAS','📦 Compras');
+
+  const subCats=filtroGrupoSaida==='COMPRAS'?CAT_SAIDA_COMPRAS:filtroGrupoSaida==='DESPESAS'?CAT_SAIDA_DESPESAS:CAT_SAIDA;
+  const filtros=['',  ...subCats.filter(c=>totCat[c])].map(cat=>
     `<button onclick="filtroSaida='${cat}';renderSaidas()" style="padding:5px 12px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;border-radius:20px;cursor:pointer;border:1px solid ${filtroSaida===cat?'var(--gold)':'var(--border)'};background:${filtroSaida===cat?'var(--gold-bg)':'transparent'};color:${filtroSaida===cat?'var(--gold)':'var(--muted)'};font-family:'DM Sans',sans-serif;white-space:nowrap">${cat||'Todos'}</button>`
   ).join('');
 
@@ -756,6 +774,7 @@ function renderSaidas(){
     </div>
     <button class="btn-gold" onclick="addSaida()">+ Adicionar Saída</button>
   </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">${gruposHtml}</div>
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">${filtros}</div>`;
 
   if(data.length){
@@ -776,14 +795,15 @@ function renderSaidas(){
         </td>
       </tr>`;
     }).join('');
-    h+=`<div class="sec-hdr"><h2>${filtroSaida||'Todas as Saídas'} — ${MESES[ST.mes-1]} ${ST.ano}</h2><div class="sec-line"></div></div>
+    const tituloGrupo=filtroSaida||(filtroGrupoSaida==='COMPRAS'?'Compras':filtroGrupoSaida==='DESPESAS'?'Despesas':'Todas as Saídas');
+    h+=`<div class="sec-hdr"><h2>${tituloGrupo} — ${MESES[ST.mes-1]} ${ST.ano}</h2><div class="sec-line"></div></div>
     <div class="tbl-wrap"><table>
       <tr><th>Data</th><th>Categoria</th><th style="text-align:left">Descrição</th><th>Forma</th><th>Valor</th><th></th></tr>
       ${rows}
-      <tr class="tfoot"><td colspan="4">TOTAL ${filtroSaida||'SAÍDAS'}</td><td class="neg">${fmt(tot)}</td><td></td></tr>
+      <tr class="tfoot"><td colspan="4">TOTAL ${tituloGrupo.toUpperCase()}</td><td class="neg">${fmt(tot)}</td><td></td></tr>
     </table></div>`;
   } else {
-    h+=`<div class="empty">📉 <div>${filtroSaida?'Nenhuma saída nessa categoria.':'Sem saídas lançadas.'}</div></div>`;
+    h+=`<div class="empty">📉 <div>${filtroSaida||filtroGrupoSaida?'Nenhuma saída nesse filtro.':'Sem saídas lançadas.'}</div></div>`;
   }
   c.innerHTML=h;
 }
@@ -1825,8 +1845,11 @@ function renderMarkup(){
 tblRows.push({d,dt,isSun,isFuture,enDia,cmvAcc:cmvAcc2,vendaAcc,taxasAcc,gastosAcc,imposto:impostoAcc,pct:cmvAcc2>0?(vendaAcc-taxasAcc-gastosAcc-impostoAcc)/cmvAcc2-1:0});
     }
 
+    // Último dia com preenchimento real (não usa a data de hoje, e sim o último lançamento)
+    const ultimoPreenchido=diasAbertos.length?diasAbertos[diasAbertos.length-1]:null;
+
     // META DO MÊS = MB / (P / (1+P)) usando P do ÚLTIMO DIA do acumulativo
-    const ultimoDiaAcc=tblRows.filter(r=>!r.isFuture&&r.cmvAcc>0);
+    const ultimoDiaAcc=tblRows.filter(r=>ultimoPreenchido&&r.dt<=ultimoPreenchido&&r.cmvAcc>0);
     const pUltimoDia=ultimoDiaAcc.length>0?ultimoDiaAcc[ultimoDiaAcc.length-1].pct:(pctAtual||0);
     metaMes=metaDigitada>0&&pUltimoDia>0?metaDigitada/(pUltimoDia/(1+pUltimoDia)):metaDigitada;
 
@@ -1883,7 +1906,7 @@ tblRows.push({d,dt,isSun,isFuture,enDia,cmvAcc:cmvAcc2,vendaAcc,taxasAcc,gastosA
     const legVend=nomes.map((n,i)=>{const vt=vendTotals[i]||0;const pp=totalVA>0?(vt/totalVA*100).toFixed(0):0;return'<div style="display:flex;align-items:center;gap:4px;font-size:10px"><div style="width:8px;height:8px;background:'+VEND_COLORS[i%VEND_COLORS.length]+';border-radius:2px"></div>'+n+'<span style="color:var(--gold);margin-left:2px">'+pp+'%</span></div><div style="font-size:9px;color:var(--muted);margin-left:12px">'+fmt(vt)+'</div>';}).join('');
 
     // HTML da tabela de markup
-    const mkTblRows=tblRows.filter(r=>!r.isFuture&&r.vendaAcc>0&&!r.isSun).map(r=>{
+    const mkTblRows=tblRows.filter(r=>ultimoPreenchido&&r.dt<=ultimoPreenchido&&r.vendaAcc>0&&!r.isSun).map(r=>{
       const p=r.pct;
       return'<tr style="background:'+mkBg(p)+'"><td style="font-family:\'Syne\',sans-serif;font-size:11px;color:var(--muted)">'+r.d+'/'+String(ST.mes).padStart(2,'0')+'</td><td>'+fmt(r.cmvAcc)+'</td><td>'+fmt(r.vendaAcc)+'</td><td class="neg">'+fmt(r.taxasAcc)+'</td><td class="neg">'+fmt(r.gastosAcc)+'</td><td class="neg">'+fmt(r.imposto)+'</td><td style="font-family:\'Syne\',sans-serif;font-weight:700;color:'+mkColor(p)+'">'+(p>0?(p*100).toFixed(1)+'%':'—')+'</td></tr>';
     }).join('');
