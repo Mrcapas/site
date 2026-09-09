@@ -250,6 +250,7 @@ const pct=(n,b)=>!b||b===0?'—':(n/b*100).toFixed(1)+'%';
 const vc=n=>n>0?'pos':n<0?'neg':'dim';
 const uuid=()=>Math.random().toString(36).slice(2,9);
 const today=()=>new Date().toISOString().slice(0,10);
+const yesterday=()=>{const d=new Date();d.setDate(d.getDate()-1);return d.toISOString().slice(0,10);};
 
 function sk(t){return`srcapas_${t}_${ST.empresa}_${ST.ano}_${String(ST.mes).padStart(2,'0')}`}
 function load(t){try{return JSON.parse(localStorage.getItem(sk(t))||'[]')}catch{return[]}}
@@ -540,7 +541,7 @@ function renderEntradas(){
   let h=`<div class="form-card">
     <div class="sec-hdr" style="margin-bottom:14px"><h2>Novo Lançamento Diário</h2><div class="sec-line"></div></div>
     <div class="fg">
-      <div class="fl"><label>Data</label><input class="fi" type="date" id="e-dt" onkeydown="enterNext(event,'e-din')"></div>
+      <div class="fl"><label>Data</label><input class="fi" type="date" id="e-dt" value="${yesterday()}" onkeydown="enterNext(event,'e-din')"></div>
       <div class="fl"><label>Dinheiro R$</label><input class="fi" type="number" step="0.01" id="e-din" placeholder="0,00" onkeydown="enterNext(event,'e-pix')"></div>
       <div class="fl"><label>PIX (bruto) R$</label><input class="fi" type="number" step="0.01" id="e-pix" placeholder="0,00" onkeydown="enterNext(event,'e-tpix')"></div>
       <div class="fl"><label>Taxa PIX R$</label><input class="fi" type="number" step="0.01" id="e-tpix" placeholder="0,00" onkeydown="enterNext(event,'e-cart')"></div>
@@ -746,10 +747,10 @@ function renderSaidas(){
   let h=`<div class="form-card">
     <div class="sec-hdr" style="margin-bottom:14px"><h2>Nova Saída</h2><div class="sec-line"></div></div>
     <div class="fg">
-      <div class="fl"><label>Data</label><input class="fi" type="date" id="s-dt" value="${today()}"></div>
-      <div class="fl"><label>Categoria</label><select class="fi" id="s-cat">${catO}</select></div>
-      <div class="fl"><label>Banco Débito</label><select class="fi" id="s-banco"><option value="pagbank">PagBank</option>${getStoreConfig().temInfinitePay?"<option value=\"infinitepay\">InfinitePay</option>":""}<option value="malote">Malote</option></select></div>
-<div class="fl"><label>Forma de Pagamento</label><select class="fi" id="s-forma">${fmO}</select></div>
+      <div class="fl"><label>Data</label><input class="fi" type="date" id="s-dt" value="${yesterday()}" onkeydown="enterNext(event,'s-cat')"></div>
+      <div class="fl"><label>Categoria</label><select class="fi" id="s-cat" onkeydown="enterNext(event,'s-banco')">${catO}</select></div>
+      <div class="fl"><label>Banco Débito</label><select class="fi" id="s-banco" onkeydown="enterNext(event,'s-forma')"><option value="pagbank">PagBank</option>${getStoreConfig().temInfinitePay?"<option value=\"infinitepay\">InfinitePay</option>":""}<option value="malote">Malote</option></select></div>
+<div class="fl"><label>Forma de Pagamento</label><select class="fi" id="s-forma" onkeydown="enterNext(event,'s-val')">${fmO}</select></div>
       <div class="fl"><label>Valor R$</label><input class="fi" type="number" step="0.01" id="s-val" placeholder="0,00" onkeydown="enterNext(event,'s-desc')"></div>
       <div class="fl" style="grid-column:span 2"><label>Descrição / Fornecedor</label><input class="fi" type="text" id="s-desc" placeholder="Ex: Conta de luz, Passagem Gerson, Compra Korai..." onkeydown="if(event.key==='Enter'){event.preventDefault();addSaida()}"></div>
     </div>
@@ -845,18 +846,18 @@ function renderFin(){
     </tr>`;
   }).join('');
 
-  const dpAuto=finTab===0?addDiasUteis(today(),2):'';
+  const dpAuto=finTab===0?addDiasUteis(yesterday(),2):'';
 
   const h=`<div class="tabs">${tabs}</div>
   <div class="form-card">
     <div class="sec-hdr" style="margin-bottom:14px"><h2>Nova Transação — ${p}</h2><div class="sec-line"></div></div>
     <div class="fg">
-      <div class="fl"><label>Data da Venda</label><input class="fi" type="date" id="f-dv" value="${today()}" onchange="calcDataPrevista(this.value)"></div>
-      <div class="fl"><label>Valor da Venda R$</label><input class="fi" type="number" step="0.01" id="f-vv" placeholder="0,00" onchange="calcVrAuto()" oninput="calcVrAuto()"></div>
-      <div class="fl"><label>Data Prev. Recebimento</label><input class="fi" type="date" id="f-dp" value="${dpAuto}"></div>
-      <div class="fl"><label>Taxa R$</label><input class="fi" type="number" step="0.01" id="f-tx" placeholder="0,00" onchange="calcVrAuto()" oninput="calcVrAuto()"></div>
-      <div class="fl"><label>Valor Recebido R$ <span style="font-size:9px;color:var(--gold)">auto</span></label><input class="fi" type="number" step="0.01" id="f-vr" placeholder="calculado auto"></div>
-      <div class="fl"><label>Dia Recebido</label><input class="fi" type="date" id="f-dr"></div>
+      <div class="fl"><label>Data da Venda</label><input class="fi" type="date" id="f-dv" value="${yesterday()}" onchange="calcDataPrevista(this.value)" onkeydown="enterNext(event,'f-vv')"></div>
+      <div class="fl"><label>Valor da Venda R$</label><input class="fi" type="number" step="0.01" id="f-vv" placeholder="0,00" onchange="calcVrAuto()" oninput="calcVrAuto()" onkeydown="enterNext(event,'f-dp')"></div>
+      <div class="fl"><label>Data Prev. Recebimento</label><input class="fi" type="date" id="f-dp" value="${dpAuto}" onkeydown="enterNext(event,'f-tx')"></div>
+      <div class="fl"><label>Taxa R$</label><input class="fi" type="number" step="0.01" id="f-tx" placeholder="0,00" onchange="calcVrAuto()" oninput="calcVrAuto()" onkeydown="enterNext(event,'f-vr')"></div>
+      <div class="fl"><label>Valor Recebido R$ <span style="font-size:9px;color:var(--gold)">auto</span></label><input class="fi" type="number" step="0.01" id="f-vr" placeholder="calculado auto" onkeydown="enterNext(event,'f-dr')"></div>
+      <div class="fl"><label>Dia Recebido</label><input class="fi" type="date" id="f-dr" value="${yesterday()}" onkeydown="if(event.key==='Enter'){event.preventDefault();addFi('${key}')}"></div>
     </div>
     <button class="btn-gold" onclick="addFi('${key}')">+ Adicionar</button>
   </div>
@@ -894,7 +895,7 @@ function receberLote(){
   const h2=document.createElement('h2');h2.textContent='Receber em Lote ('+items.length+' financeiras)';div.appendChild(h2);
   const fl=document.createElement('div');fl.className='fl';fl.style.marginBottom='16px';
   const lbl=document.createElement('label');lbl.textContent='Data de Recebimento';fl.appendChild(lbl);
-  const inp=document.createElement('input');inp.className='fi';inp.type='date';inp.id='lote-dr';inp.value=today();inp.style.maxWidth='200px';fl.appendChild(inp);
+  const inp=document.createElement('input');inp.className='fi';inp.type='date';inp.id='lote-dr';inp.value=yesterday();inp.style.maxWidth='200px';fl.appendChild(inp);
   div.appendChild(fl);
   const btns=document.createElement('div');btns.style.cssText='display:flex;gap:8px';
   const ok=document.createElement('button');ok.className='btn-gold';ok.style.flex='1';
@@ -937,7 +938,7 @@ function marcarRecebido(key,id){
   div.innerHTML=`<h2>✓ Registrar Recebimento</h2>
     <div class="fl" style="margin-bottom:12px">
       <label>Data de Recebimento</label>
-      <input class="fi" type="date" id="fin-dr" value="${today()}" style="max-width:200px">
+      <input class="fi" type="date" id="fin-dr" value="${yesterday()}" style="max-width:200px">
     </div>
     <div class="fl" style="margin-bottom:16px">
       <label>Valor Recebido R$</label>
@@ -1235,12 +1236,12 @@ function renderVerif(){
     </tr>`;
   }).join('');
   const mod1Form=`<div class="fg">
-    <div class="fl"><label>Nome Completo</label><input class="fi" type="text" id="fn-n" placeholder="Nome completo"></div>
-    <div class="fl"><label>Salário R$</label><input class="fi" type="number" step="0.01" id="fn-s" placeholder="0,00"></div>
-    <div class="fl"><label>Adiantamento R$</label><input class="fi" type="number" step="0.01" id="fn-a" placeholder="0,00"></div>
-    <div class="fl"><label>Vales R$</label><input class="fi" type="number" step="0.01" id="fn-v" placeholder="0,00"></div>
-    <div class="fl"><label>Bonificação R$</label><input class="fi" type="number" step="0.01" id="fn-bon" placeholder="0,00"></div>
-    <div class="fl"><label>Status</label><select class="fi" id="fn-st">${stO}</select></div>
+    <div class="fl"><label>Nome Completo</label><input class="fi" type="text" id="fn-n" placeholder="Nome completo" onkeydown="enterNext(event,'fn-s')"></div>
+    <div class="fl"><label>Salário R$</label><input class="fi" type="number" step="0.01" id="fn-s" placeholder="0,00" onkeydown="enterNext(event,'fn-a')"></div>
+    <div class="fl"><label>Adiantamento R$</label><input class="fi" type="number" step="0.01" id="fn-a" placeholder="0,00" onkeydown="enterNext(event,'fn-v')"></div>
+    <div class="fl"><label>Vales R$</label><input class="fi" type="number" step="0.01" id="fn-v" placeholder="0,00" onkeydown="enterNext(event,'fn-bon')"></div>
+    <div class="fl"><label>Bonificação R$</label><input class="fi" type="number" step="0.01" id="fn-bon" placeholder="0,00" onkeydown="enterNext(event,'fn-st')"></div>
+    <div class="fl"><label>Status</label><select class="fi" id="fn-st" onkeydown="if(event.key==='Enter'){event.preventDefault();addFun()}">${stO}</select></div>
   <div class="fl"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:4px">
     <input type="checkbox" id="fn-vend" style="width:15px;height:15px;accent-color:var(--gold)">
     <span>🏆 É Vendedor (aparece na Meta por Vendedor)</span>
@@ -1250,10 +1251,10 @@ function renderVerif(){
   <hr style="border:none;border-top:1px solid var(--border);margin:12px 0">
   <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:8px;letter-spacing:.1em">CREDIÁRIO</div>
   <div class="fg">
-    <div class="fl" style="grid-column:span 2"><label>Descrição</label><input class="fi" type="text" id="cr-desc" placeholder="Ex: Celular Samsung..."></div>
-    <div class="fl"><label>Funcionário</label><select class="fi" id="cr-fun">${funOpts||'<option>Cadastre um funcionário primeiro</option>'}</select></div>
-    <div class="fl"><label>Valor Total R$</label><input class="fi" type="number" step="0.01" id="cr-total" placeholder="0,00" oninput="calcParcelaCred()"></div>
-    <div class="fl"><label>Nº Parcelas</label><select class="fi" id="cr-parc" onchange="calcParcelaCred()">${[1,2,3,4,5,6,7,8,9,10,11,12].map(n=>`<option value="${n}">${n}x</option>`).join('')}</select></div>
+    <div class="fl" style="grid-column:span 2"><label>Descrição</label><input class="fi" type="text" id="cr-desc" placeholder="Ex: Celular Samsung..." onkeydown="enterNext(event,'cr-fun')"></div>
+    <div class="fl"><label>Funcionário</label><select class="fi" id="cr-fun" onkeydown="enterNext(event,'cr-total')">${funOpts||'<option>Cadastre um funcionário primeiro</option>'}</select></div>
+    <div class="fl"><label>Valor Total R$</label><input class="fi" type="number" step="0.01" id="cr-total" placeholder="0,00" oninput="calcParcelaCred()" onkeydown="enterNext(event,'cr-parc')"></div>
+    <div class="fl"><label>Nº Parcelas</label><select class="fi" id="cr-parc" onchange="calcParcelaCred()" onkeydown="if(event.key==='Enter'){event.preventDefault();addCred()}">${[1,2,3,4,5,6,7,8,9,10,11,12].map(n=>`<option value="${n}">${n}x</option>`).join('')}</select></div>
     <div class="fl"><label>Parcela <span style="color:var(--gold);font-size:9px">auto</span></label><input class="fi" type="text" id="cr-parcela" placeholder="R$ 0,00" readonly style="color:var(--gold);font-weight:700"></div>
   </div>
   <button class="btn-gold" onclick="addCred()">Registrar Crediário</button>`;
@@ -1290,17 +1291,17 @@ function renderVerif(){
   // ── MOD 2: VALES FUNCIONÁRIOS ──
   const valesCat=todosC.filter(cu=>cu.cat==='VALES');
   const mod2Form=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:8px">
-    <div class="fl"><label>Tipo</label><select class="fi" id="va-tipo">
+    <div class="fl"><label>Tipo</label><select class="fi" id="va-tipo" onkeydown="enterNext(event,'va-fun')">
       <option value="ADIANTAMENTO">💳 Adiantamento</option>
       <option value="ERRO">⚠ Vale de Erro</option>
     </select></div>
-    <div class="fl"><label>Funcionário</label><select class="fi" id="va-fun">${funOpts||'<option value="">Cadastre um funcionário</option>'}</select></div>
-    <div class="fl"><label>Descrição</label><input class="fi" type="text" id="va-n" placeholder="Ex: Adiantamento quinzenal"></div>
-    <div class="fl"><label>Valor R$</label><input class="fi" type="number" step="0.01" id="va-v" placeholder="0,00"></div>
-    <div class="fl"><label>Vencimento</label><input class="fi" type="date" id="va-vc"></div>
-    <div class="fl"><label>Forma</label><select class="fi" id="va-f">${fmO}</select></div>
-    <div class="fl"><label>Status</label><select class="fi" id="va-st">${stO}</select></div>
-    <div class="fl"><label>Observação</label><input class="fi" type="text" id="va-o" placeholder="Opcional"></div>
+    <div class="fl"><label>Funcionário</label><select class="fi" id="va-fun" onkeydown="enterNext(event,'va-n')">${funOpts||'<option value="">Cadastre um funcionário</option>'}</select></div>
+    <div class="fl"><label>Descrição</label><input class="fi" type="text" id="va-n" placeholder="Ex: Adiantamento quinzenal" onkeydown="enterNext(event,'va-v')"></div>
+    <div class="fl"><label>Valor R$</label><input class="fi" type="number" step="0.01" id="va-v" placeholder="0,00" onkeydown="enterNext(event,'va-vc')"></div>
+    <div class="fl"><label>Vencimento</label><input class="fi" type="date" id="va-vc" value="${yesterday()}" onkeydown="enterNext(event,'va-f')"></div>
+    <div class="fl"><label>Forma</label><select class="fi" id="va-f" onkeydown="enterNext(event,'va-st')">${fmO}</select></div>
+    <div class="fl"><label>Status</label><select class="fi" id="va-st" onkeydown="enterNext(event,'va-o')">${stO}</select></div>
+    <div class="fl"><label>Observação</label><input class="fi" type="text" id="va-o" placeholder="Opcional" onkeydown="if(event.key==='Enter'){event.preventDefault();addVale()}"></div>
   </div>
   <div style="font-size:11px;color:var(--muted);margin-bottom:8px">⚠ <strong>Vale de Erro</strong>: não requer pagamento — desconto automático do funcionário. &nbsp;|&nbsp; <strong>Adiantamento</strong>: descontado após confirmação de pagamento.</div>
   <button class="btn-gold" onclick="addVale()">Salvar Vale</button>`;
@@ -1308,12 +1309,12 @@ function renderVerif(){
   // ── MOD 3: TRIBUTOS ──
   const trib=todosC.filter(cu=>cu.cat==='TRIBUTOS');
   const mod3Form=`<div class="fg">
-    <div class="fl" style="grid-column:span 2"><label>Descrição</label><input class="fi" type="text" id="tri-n" placeholder="Ex: DAS MEI, ISS, COFINS..."></div>
-    <div class="fl"><label>Valor R$</label><input class="fi" type="number" step="0.01" id="tri-v" placeholder="0,00"></div>
-    <div class="fl"><label>Vencimento</label><input class="fi" type="date" id="tri-vc"></div>
-    <div class="fl"><label>Forma</label><select class="fi" id="tri-f">${fmO}</select></div>
-    <div class="fl"><label>Status</label><select class="fi" id="tri-st">${stO}</select></div>
-    <div class="fl" style="grid-column:span 2"><label>Observação</label><input class="fi" type="text" id="tri-o" placeholder="Referência, nº documento..."></div>
+    <div class="fl" style="grid-column:span 2"><label>Descrição</label><input class="fi" type="text" id="tri-n" placeholder="Ex: DAS MEI, ISS, COFINS..." onkeydown="enterNext(event,'tri-v')"></div>
+    <div class="fl"><label>Valor R$</label><input class="fi" type="number" step="0.01" id="tri-v" placeholder="0,00" onkeydown="enterNext(event,'tri-vc')"></div>
+    <div class="fl"><label>Vencimento</label><input class="fi" type="date" id="tri-vc" value="${yesterday()}" onkeydown="enterNext(event,'tri-f')"></div>
+    <div class="fl"><label>Forma</label><select class="fi" id="tri-f" onkeydown="enterNext(event,'tri-st')">${fmO}</select></div>
+    <div class="fl"><label>Status</label><select class="fi" id="tri-st" onkeydown="enterNext(event,'tri-o')">${stO}</select></div>
+    <div class="fl" style="grid-column:span 2"><label>Observação</label><input class="fi" type="text" id="tri-o" placeholder="Referência, nº documento..." onkeydown="if(event.key==='Enter'){event.preventDefault();addCusto('TRIBUTOS')}"></div>
     <div class="fl" style="grid-column:span 2"><label>📎 Boleto (opcional)</label><input class="fi" type="file" id="tri-boleto" accept="image/*,.pdf" style="padding:6px"></div>
   </div>
   <button class="btn-gold" onclick="addCusto('TRIBUTOS')">Salvar Tributo</button>`;
@@ -1321,12 +1322,12 @@ function renderVerif(){
   // ── MOD 4: CUSTOS FIXOS ──
   const fixos=todosC.filter(cu=>!cu.cat||cu.cat==='FIXO');
   const mod4Form=`<div class="fg">
-    <div class="fl" style="grid-column:span 2"><label>Descrição</label><input class="fi" type="text" id="cu-n" placeholder="Ex: Luz Enel, Aluguel, Internet..."></div>
-    <div class="fl"><label>Valor R$</label><input class="fi" type="number" step="0.01" id="cu-v" placeholder="0,00"></div>
-    <div class="fl"><label>Vencimento</label><input class="fi" type="date" id="cu-vc"></div>
-    <div class="fl"><label>Forma</label><select class="fi" id="cu-f">${fmO}</select></div>
-    <div class="fl"><label>Status</label><select class="fi" id="cu-st">${stO}</select></div>
-    <div class="fl" style="grid-column:span 2"><label>Observação</label><input class="fi" type="text" id="cu-o" placeholder="Nº boleto, CNPJ..."></div>
+    <div class="fl" style="grid-column:span 2"><label>Descrição</label><input class="fi" type="text" id="cu-n" placeholder="Ex: Luz Enel, Aluguel, Internet..." onkeydown="enterNext(event,'cu-v')"></div>
+    <div class="fl"><label>Valor R$</label><input class="fi" type="number" step="0.01" id="cu-v" placeholder="0,00" onkeydown="enterNext(event,'cu-vc')"></div>
+    <div class="fl"><label>Vencimento</label><input class="fi" type="date" id="cu-vc" value="${yesterday()}" onkeydown="enterNext(event,'cu-f')"></div>
+    <div class="fl"><label>Forma</label><select class="fi" id="cu-f" onkeydown="enterNext(event,'cu-st')">${fmO}</select></div>
+    <div class="fl"><label>Status</label><select class="fi" id="cu-st" onkeydown="enterNext(event,'cu-o')">${stO}</select></div>
+    <div class="fl" style="grid-column:span 2"><label>Observação</label><input class="fi" type="text" id="cu-o" placeholder="Nº boleto, CNPJ..." onkeydown="if(event.key==='Enter'){event.preventDefault();addCusto('FIXO')}"></div>
     <div class="fl" style="grid-column:span 2"><label>📎 Boleto (opcional)</label><input class="fi" type="file" id="cu-boleto" accept="image/*,.pdf" style="padding:6px"></div>
   </div>
   <button class="btn-gold" onclick="addCusto('FIXO')">Salvar Custo Fixo</button>`;
@@ -2755,11 +2756,11 @@ function renderBancaria(){
     <div class="form-card" style="margin-bottom:20px">
       <div class="sec-hdr" style="margin-bottom:12px"><h2>↕ Nova Transferência</h2><div class="sec-line"></div></div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 2fr auto;gap:8px;align-items:end">
-        <div class="fl" style="margin:0"><label>Origem</label><select class="fi" id="tr-de">${bancoOpts}</select></div>
-        <div class="fl" style="margin:0"><label>Destino</label><select class="fi" id="tr-para">${bancoOpts}</select></div>
-        <div class="fl" style="margin:0"><label>Valor R$</label><input class="fi" type="number" step="0.01" id="tr-val" placeholder="0,00"></div>
-        <div class="fl" style="margin:0"><label>Data</label><input class="fi" type="date" id="tr-dt" value="${today()}"></div>
-        <div class="fl" style="margin:0"><label>Obs.</label><input class="fi" type="text" id="tr-obs" placeholder="Motivo..."></div>
+        <div class="fl" style="margin:0"><label>Origem</label><select class="fi" id="tr-de" onkeydown="enterNext(event,'tr-para')">${bancoOpts}</select></div>
+        <div class="fl" style="margin:0"><label>Destino</label><select class="fi" id="tr-para" onkeydown="enterNext(event,'tr-val')">${bancoOpts}</select></div>
+        <div class="fl" style="margin:0"><label>Valor R$</label><input class="fi" type="number" step="0.01" id="tr-val" placeholder="0,00" onkeydown="enterNext(event,'tr-dt')"></div>
+        <div class="fl" style="margin:0"><label>Data</label><input class="fi" type="date" id="tr-dt" value="${yesterday()}" onkeydown="enterNext(event,'tr-obs')"></div>
+        <div class="fl" style="margin:0"><label>Obs.</label><input class="fi" type="text" id="tr-obs" placeholder="Motivo..." onkeydown="if(event.key==='Enter'){event.preventDefault();addTransferencia()}"></div>
         <button class="btn-gold" onclick="addTransferencia()" style="height:36px;white-space:nowrap">+ Transferir</button>
       </div>
     </div>
