@@ -181,6 +181,7 @@ body.dark-mode .mkBg-high{background:#052010!important}
     <button class="sb-item" data-tab="dre" onclick="setTab('dre',this)">📊 DRE</button>
 <button class="sb-item" data-tab="bancaria" onclick="setTab('bancaria',this)">🏦 Gestão Bancária</button>
 <button class="sb-item" data-tab="estoque" onclick="setTab('estoque',this)">📦 Controle de Estoque</button>
+<button class="sb-item" data-tab="lucro5" onclick="setTab('lucro5',this)">⭐ 5% do Lucro</button>
     <div class="sb-bottom">
 
       <button id="theme-btn" onclick="toggleTheme()" style="width:100%;margin:0 0 6px;display:flex;align-items:center;gap:8px;padding:9px 14px;background:transparent;border:1px solid var(--border);border-radius:7px;cursor:pointer;font-size:12px;color:var(--muted);font-family:inherit;transition:all .2s">🌙 Modo Escuro</button>
@@ -426,7 +427,7 @@ function changePeriod(){
 
 
 // TAB
-const TITLES={bancaria:'Gestão Bancária',dashboard:'Dashboard',entradas:'Entradas',saidas:'Saídas',financeiras:'Financeiras',verificacao:'Verificação Mensal',markup:'Markup',dre:'DRE — Resultado do Exercício',estoque:'Controle de Estoque'};
+const TITLES={bancaria:'Gestão Bancária',dashboard:'Dashboard',entradas:'Entradas',saidas:'Saídas',financeiras:'Financeiras',verificacao:'Verificação Mensal',markup:'Markup',dre:'DRE — Resultado do Exercício',estoque:'Controle de Estoque',lucro5:'5% do Lucro'};
 function setTab(tab,btn){
   ST.tab=tab;
   document.querySelectorAll('.sb-item').forEach(b=>b.classList.remove('active'));
@@ -437,7 +438,7 @@ function render(){
   const t=document.getElementById('tb-title');
   t.textContent=TITLES[ST.tab]||'';t.dataset.orig=t.textContent;
   document.getElementById('content').innerHTML='';
-  ({dashboard:renderDash,entradas:renderEntradas,saidas:renderSaidas,financeiras:renderFin,verificacao:renderVerif,markup:renderMarkup,dre:renderDRE,bancaria:renderBancaria,estoque:renderEstoque}[ST.tab]||function(){})();
+  ({dashboard:renderDash,entradas:renderEntradas,saidas:renderSaidas,financeiras:renderFin,verificacao:renderVerif,markup:renderMarkup,dre:renderDRE,bancaria:renderBancaria,estoque:renderEstoque,lucro5:renderLucro5}[ST.tab]||function(){})();
 }
 
 // CALCS
@@ -791,6 +792,7 @@ function renderSaidas(){
         <td>${r.forma}</td>
         <td class="neg" style="font-family:'Syne',sans-serif;font-weight:700">${fmt(r.val)}</td>
         <td style="white-space:nowrap">
+          <button class="btn-sm" onclick="toggleEstrelaSaida('${r.id}')" title="${r.estrela?'Remover da conta dos 5%':'Marcar para entrar nos 5% do lucro'}" style="margin-right:4px;color:${r.estrela?'var(--gold)':'var(--dim)'}">${r.estrela?'★':'☆'}</button>
           <button class="btn-sm btn-ok" onclick="editSaida('${r.id}')" style="margin-right:4px">✏</button>
           <button class="btn-sm" onclick="delS('${r.id}')">×</button>
         </td>
@@ -819,6 +821,13 @@ function addSaida(){
   save('saidas',data);notify('Saída registrada!','ok');renderSaidas();
 }
 function delS(id){if(!confirm('Remover?'))return;save('saidas',load('saidas').filter(r=>r.id!==id));renderSaidas()}
+function toggleEstrelaSaida(id){
+  const data=load('saidas');
+  const r=data.find(x=>x.id===id);
+  if(!r)return;
+  r.estrela=!r.estrela;
+  save('saidas',data);renderSaidas();
+}
 
 // Dias úteis
 function addDiasUteis(dataStr,dias){
@@ -1016,7 +1025,7 @@ function getVerif(){
     }
   });
   // Mesclar: base global + dados do mês
-  const funs=funsGlobal.map(f=>({...f,...(funMes[f.id]||{sal:0,adi:0,vale:0,bonificacao:0,st:'PENDENTE'})}));
+  const funs=funsGlobal.map(f=>({...f,...(funMes[f.id]||{sal:0,adi:0,vale:0,bonificacao:0,st:'PENDENTE',estrela:false})}));
   return{f:funs,c:custos,cred:creds};
 }
 function saveVerif(v){
@@ -1163,6 +1172,7 @@ function renderVerif(){
       <td><span class="badge ${naoPagavel?'b-late':cu.st==='PAGO'?'b-ok':cu.st==='VENCIDO'?'b-late':'b-pend'}">${naoPagavel?'AUTO':cu.st||'PENDENTE'}</span></td>
       <td style="font-size:11px;color:var(--dim);text-align:left">${cu.obs||''}</td>
       <td style="white-space:nowrap">
+        <button class="btn-sm" onclick="toggleEstrelaCusto('${cu.id}')" title="${cu.estrela?'Remover da conta dos 5%':'Marcar para entrar nos 5% do lucro'}" style="margin-right:4px;color:${cu.estrela?'var(--gold)':'var(--dim)'}">${cu.estrela?'★':'☆'}</button>
         <button class="btn-sm btn-ok" onclick="editCusto('${cu.id}')" style="margin-right:4px" title="Editar">✏</button>
         ${pagarBtn}
         <button class="btn-sm" onclick="delVi('c','${cu.id}')">×</button>
@@ -1220,6 +1230,7 @@ function renderVerif(){
       <td class="gold" style="font-family:'Syne',sans-serif;font-weight:700">${fmt(total)}</td>
       <td><span class="badge ${f.st==='PAGO'?'b-ok':'b-pend'}">${f.st||'PENDENTE'}</span></td>
       <td style="white-space:nowrap">
+        <button class="btn-sm" onclick="toggleEstrelaFun('${f.id}')" title="${f.estrela?'Remover da conta dos 5%':'Marcar salário para entrar nos 5% do lucro'}" style="margin-right:4px;color:${f.estrela?'var(--gold)':'var(--dim)'}">${f.estrela?'★':'☆'}</button>
         <button class="btn-sm btn-ok" onclick="editFun('${f.id}')" style="margin-right:4px">✏</button>
         ${f.st==='PAGO'
           ?'<button class="btn-sm" onclick="desfazerPagFun(\''+f.id+'\')" style="margin-right:4px" title="Desfazer">↩</button>'
@@ -1456,6 +1467,12 @@ async function addVale(){
 }
 
 
+function toggleEstrelaFun(id){
+  const funMes=getFunsMes();
+  if(!funMes[id])funMes[id]={};
+  funMes[id].estrela=!funMes[id].estrela;
+  saveFunMes(funMes);pushToFB();renderVerif();
+}
 function pagarFun(id){
   const funMes=getFunsMes();
   if(!funMes[id])funMes[id]={};
@@ -1467,6 +1484,13 @@ function desfazerPagFun(id){
   if(!funMes[id])funMes[id]={};
   funMes[id].st='PENDENTE';
   saveFunMes(funMes);pushToFB();renderVerif();notify('Pagamento revertido','info');
+}
+function toggleEstrelaCusto(id){
+  const v=getVerif();
+  const cu=(v.c||[]).find(x=>x.id===id);
+  if(!cu)return;
+  cu.estrela=!cu.estrela;
+  saveVerif(v);renderVerif();
 }
 function pagarCusto(id){
   // Exige comprovante de pagamento
@@ -2913,6 +2937,66 @@ async function renderEstoque(){
     h+='<div class="empty">📦 <div>Nenhuma compra lançada nesse filtro.</div></div>';
   }
 
+  c.innerHTML=h;
+}
+// ── 5% DO LUCRO (apuração sobre despesas marcadas com ★) ──
+function calcDespesasEstrela(){
+  const sa=load('saidas');
+  const v=getVerif();
+  const itens=[];
+  sa.filter(r=>r.estrela).forEach(r=>{
+    itens.push({data:r.data||'',desc:r.desc||r.cat,cat:r.cat,val:+r.val||0,origem:'Saídas'});
+  });
+  (v.c||[]).filter(cu=>cu.estrela).forEach(cu=>{
+    const catLabel=cu.cat==='TRIBUTOS'?'Tributo':cu.cat==='VALES'?(cu.tipo==='ERRO'?'Vale de Erro':'Adiantamento'):'Custo Fixo';
+    itens.push({data:cu.venc||'',desc:cu.nome,cat:catLabel,val:+cu.val||0,origem:'Verificação Mensal'});
+  });
+  (v.f||[]).filter(f=>f.estrela).forEach(f=>{
+    const val=(+f.sal||0)+(+f.bonificacao||0);
+    if(val>0)itens.push({data:'',desc:'Salário — '+f.nome,cat:'Folha',val,origem:'Quadro de Funcionários'});
+  });
+  itens.sort((a,b)=>(a.data||'').localeCompare(b.data||''));
+  return itens;
+}
+function renderLucro5(){
+  const c=document.getElementById('content');
+  const t=calcTotais();
+  const itens=calcDespesasEstrela();
+  const totalDesp=itens.reduce((s,i)=>s+i.val,0);
+  const lucro=t.fat-t.cmvTotal-t.taxas-totalDesp;
+  const cinco=lucro*0.05;
+
+  let h=`<div class="form-card" style="padding:18px 20px;margin-bottom:22px;max-width:440px">
+    <div class="sec-hdr" style="margin-bottom:12px"><h2>Apuração do Mês — ${MESES[ST.mes-1]} ${ST.ano}</h2><div class="sec-line"></div></div>
+    <div class="dre-row"><div class="dre-l">(+) Receitas</div><div class="dre-v pos">${fmt(t.fat)}</div></div>
+    <div class="dre-row"><div class="dre-l">(−) CMV</div><div class="dre-v neg">${fmt(t.cmvTotal)}</div></div>
+    <div class="dre-row"><div class="dre-l">(−) Taxas</div><div class="dre-v neg">${fmt(t.taxas)}</div></div>
+    <div class="dre-row"><div class="dre-l">(−) Despesas ★</div><div class="dre-v neg">${fmt(totalDesp)}</div></div>
+    <div class="dre-row" style="border-top:1px solid var(--border);margin-top:8px;padding-top:8px">
+      <div class="dre-l" style="font-weight:800">(=) Lucro</div><div class="dre-v ${lucro>=0?'pos':'neg'}" style="font-weight:800">${fmt(lucro)}</div>
+    </div>
+    <div class="dre-row" style="margin-top:10px">
+      <div class="dre-l gold" style="font-weight:800">★ 5% do Lucro</div><div class="dre-v gold" style="font-weight:800">${fmt(cinco)}</div>
+    </div>
+  </div>`;
+
+  h+=`<div class="sec-hdr" style="margin-bottom:10px"><h2>Despesas Marcadas com ★</h2><div class="sec-line"></div></div>`;
+  if(itens.length){
+    const rows=itens.map(i=>`<tr>
+      <td style="font-size:11px;color:var(--muted)">${i.data?new Date(i.data+'T12:00:00').toLocaleDateString('pt-BR'):'—'}</td>
+      <td><span class="badge b-pend">${i.cat}</span></td>
+      <td style="text-align:left">${i.desc}</td>
+      <td style="font-size:10px;color:var(--dim)">${i.origem}</td>
+      <td class="neg" style="font-weight:700">${fmt(i.val)}</td>
+    </tr>`).join('');
+    h+=`<div class="tbl-wrap"><table>
+      <tr><th>Data</th><th>Categoria</th><th style="text-align:left">Descrição</th><th>Origem</th><th>Valor</th></tr>
+      ${rows}
+      <tr class="tfoot"><td colspan="4">TOTAL DESPESAS ★</td><td class="neg">${fmt(totalDesp)}</td></tr>
+    </table></div>`;
+  }else{
+    h+=`<div class="empty">⭐ <div>Nenhuma despesa marcada com estrela neste mês. Marque a estrela (☆) em Saídas ou Verificação Mensal para que a despesa entre nesta conta.</div></div>`;
+  }
   c.innerHTML=h;
 }
 // ── NOTIFICAÇÕES ──────────────────────────────────────────────
