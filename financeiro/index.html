@@ -2808,19 +2808,50 @@ const LOJAS_ESTOQUE=[
 function loadEmpresaMes(tipo,empresa){
   try{return JSON.parse(localStorage.getItem(`srcapas_${tipo}_${empresa}_${ST.ano}_${String(ST.mes).padStart(2,'0')}`)||'[]')}catch{return[]}
 }
+// Cada loja tem seu próprio caminho no Firebase (srcapas/<loja>), então o localStorage
+// só contém os dados da loja atualmente selecionada. Para a visão unificada, buscamos
+// as outras lojas direto do Firebase.
+async function loadEmpresaMesUniversal(tipo,empresa){
+  if(empresa===ST.empresa){
+    // Loja ativa: usa o local, que já reflete os lançamentos mais recentes (sincronizados na hora)
+    return loadEmpresaMes(tipo,empresa);
+  }
+  try{
+    const snap=await _db.ref('srcapas/'+empresa).once('value');
+    const rec=snap.val()||{};
+    const chave=`srcapas_${tipo}_${empresa}_${ST.ano}_${String(ST.mes).padStart(2,'0')}`;
+    return rec[chave]||[];
+  }catch(e){
+    console.warn('[Estoque] falha ao buscar '+empresa+' no Firebase, usando cache local:',e.message);
+    return loadEmpresaMes(tipo,empresa); // fallback: o que tiver em cache local (pode estar desatualizado)
+  }
+}
 let filtroLojaEstoque='';
-function renderEstoque(){
+let _estoqueCache=null; // {key:'ano-mes', dados:[...]}
+async function renderEstoque(){
   const c=document.getElementById('content');
+  const cacheKey=ST.ano+'-'+ST.mes+'-'+ST.empresa;
+  let dadosPorLoja;
 
-  const dadosPorLoja=LOJAS_ESTOQUE.map(lj=>{
-    const en=loadEmpresaMes('entradas',lj.v);
-    const sa=loadEmpresaMes('saidas',lj.v);
-    const cmv=en.reduce((s,r)=>s+(+r.cmv||0),0);
-    const compras=sa.filter(r=>CAT_SAIDA_COMPRAS.includes(r.cat)).reduce((s,r)=>s+(+r.val||0),0);
-    const perdas=sa.filter(r=>r.cat==='Perda').reduce((s,r)=>s+(+r.val||0),0);
-    const disponivel=cmv-compras+perdas;
-    return{...lj,cmv,compras,perdas,disponivel,sa};
-  });
+  if(_estoqueCache&&_estoqueCache.key===cacheKey){
+    dadosPorLoja=_estoqueCache.dados;
+  }else{
+    c.innerHTML='<div class="empty">⏳ <div>Carregando dados das 3 lojas…</div></div>';
+    dadosPorLoja=await Promise.all(LOJAS_ESTOQUE.map(async lj=>{
+      const [en,sa]=await Promise.all([
+        loadEmpresaMesUniversal('entradas',lj.v),
+        loadEmpresaMesUniversal('saidas',lj.v)
+      ]);
+      const cmv=en.reduce((s,r)=>s+(+r.cmv||0),0);
+      const compras=sa.filter(r=>CAT_SAIDA_COMPRAS.includes(r.cat)).reduce((s,r)=>s+(+r.val||0),0);
+      const perdas=sa.filter(r=>r.cat==='Perda').reduce((s,r)=>s+(+r.val||0),0);
+      const disponivel=cmv-compras+perdas;
+      return{...lj,cmv,compras,perdas,disponivel,sa};
+    }));
+    if(ST.tab!=='estoque')return; // usuário já saiu da aba enquanto buscava
+    _estoqueCache={key:cacheKey,dados:dadosPorLoja};
+  }
+
   const totCmv=dadosPorLoja.reduce((s,d)=>s+d.cmv,0);
   const totCompras=dadosPorLoja.reduce((s,d)=>s+d.compras,0);
   const totDisponivel=dadosPorLoja.reduce((s,d)=>s+d.disponivel,0);
