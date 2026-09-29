@@ -180,6 +180,7 @@ body.dark-mode .mkBg-high{background:#052010!important}
     <button class="sb-item" data-tab="markup" onclick="setTab('markup',this)">📐 Markup</button>
     <button class="sb-item" data-tab="dre" onclick="setTab('dre',this)">📊 DRE</button>
 <button class="sb-item" data-tab="bancaria" onclick="setTab('bancaria',this)">🏦 Gestão Bancária</button>
+<button class="sb-item" data-tab="estoque" onclick="setTab('estoque',this)">📦 Controle de Estoque</button>
     <div class="sb-bottom">
 
       <button id="theme-btn" onclick="toggleTheme()" style="width:100%;margin:0 0 6px;display:flex;align-items:center;gap:8px;padding:9px 14px;background:transparent;border:1px solid var(--border);border-radius:7px;cursor:pointer;font-size:12px;color:var(--muted);font-family:inherit;transition:all .2s">🌙 Modo Escuro</button>
@@ -425,7 +426,7 @@ function changePeriod(){
 
 
 // TAB
-const TITLES={bancaria:'Gestão Bancária',dashboard:'Dashboard',entradas:'Entradas',saidas:'Saídas',financeiras:'Financeiras',verificacao:'Verificação Mensal',markup:'Markup',dre:'DRE — Resultado do Exercício'};
+const TITLES={bancaria:'Gestão Bancária',dashboard:'Dashboard',entradas:'Entradas',saidas:'Saídas',financeiras:'Financeiras',verificacao:'Verificação Mensal',markup:'Markup',dre:'DRE — Resultado do Exercício',estoque:'Controle de Estoque'};
 function setTab(tab,btn){
   ST.tab=tab;
   document.querySelectorAll('.sb-item').forEach(b=>b.classList.remove('active'));
@@ -436,7 +437,7 @@ function render(){
   const t=document.getElementById('tb-title');
   t.textContent=TITLES[ST.tab]||'';t.dataset.orig=t.textContent;
   document.getElementById('content').innerHTML='';
-  ({dashboard:renderDash,entradas:renderEntradas,saidas:renderSaidas,financeiras:renderFin,verificacao:renderVerif,markup:renderMarkup,dre:renderDRE,bancaria:renderBancaria}[ST.tab]||function(){})();
+  ({dashboard:renderDash,entradas:renderEntradas,saidas:renderSaidas,financeiras:renderFin,verificacao:renderVerif,markup:renderMarkup,dre:renderDRE,bancaria:renderBancaria,estoque:renderEstoque}[ST.tab]||function(){})();
 }
 
 // CALCS
@@ -2797,6 +2798,91 @@ function renderBancaria(){
       </table></div>
     </div>`:'<div class="empty">Nenhuma transferência registrada.</div>'}
   `;
+}
+// ── CONTROLE DE ESTOQUE (unificado entre as 3 lojas, separado por mês) ──
+const LOJAS_ESTOQUE=[
+  {v:'araruama',l:'Araruama'},
+  {v:'bacaxa',l:'Bacaxá'},
+  {v:'araruama_mall',l:'OpenMall'},
+];
+function loadEmpresaMes(tipo,empresa){
+  try{return JSON.parse(localStorage.getItem(`srcapas_${tipo}_${empresa}_${ST.ano}_${String(ST.mes).padStart(2,'0')}`)||'[]')}catch{return[]}
+}
+let filtroLojaEstoque='';
+function renderEstoque(){
+  const c=document.getElementById('content');
+
+  const dadosPorLoja=LOJAS_ESTOQUE.map(lj=>{
+    const en=loadEmpresaMes('entradas',lj.v);
+    const sa=loadEmpresaMes('saidas',lj.v);
+    const cmv=en.reduce((s,r)=>s+(+r.cmv||0),0);
+    const compras=sa.filter(r=>CAT_SAIDA_COMPRAS.includes(r.cat)).reduce((s,r)=>s+(+r.val||0),0);
+    const perdas=sa.filter(r=>r.cat==='Perda').reduce((s,r)=>s+(+r.val||0),0);
+    const disponivel=cmv-compras+perdas;
+    return{...lj,cmv,compras,perdas,disponivel,sa};
+  });
+  const totCmv=dadosPorLoja.reduce((s,d)=>s+d.cmv,0);
+  const totCompras=dadosPorLoja.reduce((s,d)=>s+d.compras,0);
+  const totDisponivel=dadosPorLoja.reduce((s,d)=>s+d.disponivel,0);
+
+  const painel=(titulo,campo,totVal,cor)=>{
+    const rows=dadosPorLoja.map(d=>`<tr><td style="font-size:11px;color:var(--muted);padding:3px 0">${d.l}</td><td style="font-size:12px;font-weight:700;text-align:right;color:${cor}">${fmt(d[campo])}</td></tr>`).join('');
+    return`<div class="form-card" style="padding:12px 14px;flex:1;min-width:220px">
+      <div class="sec-hdr" style="margin-bottom:8px"><h2>${titulo}</h2><div class="sec-line"></div></div>
+      <table style="width:100%;border-collapse:collapse">${rows}
+        <tr style="border-top:1px solid var(--border)"><td style="font-size:11px;font-weight:800;padding-top:6px">Total</td><td style="font-size:13px;font-weight:800;text-align:right;padding-top:6px;color:${cor}">${fmt(totVal)}</td></tr>
+      </table>
+    </div>`;
+  };
+
+  let h='<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:22px">';
+  h+=painel('CMV','cmv',totCmv,'var(--gold)');
+  h+=painel('Compras (Merc. + Frete)','compras',totCompras,'var(--red)');
+  h+=painel('Saldo de Compras Disponível','disponivel',totDisponivel,'var(--green)');
+  h+='</div>';
+
+  // Demonstrativo unificado de compras (Compra Mercadoria + Frete), com filtro por loja
+  let todasCompras=[];
+  dadosPorLoja.forEach(d=>{
+    d.sa.filter(r=>CAT_SAIDA_COMPRAS.includes(r.cat)).forEach(r=>{
+      todasCompras.push(Object.assign({},r,{_loja:d.l,_lojaV:d.v}));
+    });
+  });
+  todasCompras.sort((a,b)=>a.data.localeCompare(b.data));
+  const listaFiltrada=filtroLojaEstoque?todasCompras.filter(r=>r._lojaV===filtroLojaEstoque):todasCompras;
+
+  const filtros=[{v:'',l:'Todas as Lojas'},...LOJAS_ESTOQUE].map(lj=>
+    `<button onclick="filtroLojaEstoque='${lj.v}';renderEstoque()" style="padding:5px 12px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;border-radius:20px;cursor:pointer;border:1px solid ${filtroLojaEstoque===lj.v?'var(--gold)':'var(--border)'};background:${filtroLojaEstoque===lj.v?'var(--gold-bg)':'transparent'};color:${filtroLojaEstoque===lj.v?'var(--gold)':'var(--muted)'};font-family:'DM Sans',sans-serif;white-space:nowrap">${lj.l}</button>`
+  ).join('');
+
+  h+=`<div class="sec-hdr" style="margin-bottom:10px"><h2>Demonstrativo de Compras — ${MESES[ST.mes-1]} ${ST.ano}</h2><div class="sec-line"></div></div>`;
+  h+=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">${filtros}</div>`;
+
+  if(listaFiltrada.length){
+    let tot=0;
+    const rows=listaFiltrada.map(r=>{
+      tot+=(+r.val||0);
+      const d=new Date(r.data+'T12:00:00');
+      const bc=r.cat==='Compra Mercadoria'?'b-info':'b-pend';
+      return`<tr>
+        <td style="font-size:10px;font-weight:700;color:var(--gold);white-space:nowrap">${r._loja}</td>
+        <td style="font-family:'Syne',sans-serif;font-size:11px;font-weight:600;color:var(--muted)">${d.toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'})}</td>
+        <td><span class="badge ${bc}">${r.cat}</span></td>
+        <td style="text-align:left">${r.desc||'—'}</td>
+        <td>${r.forma}</td>
+        <td class="neg" style="font-family:'Syne',sans-serif;font-weight:700">${fmt(r.val)}</td>
+      </tr>`;
+    }).join('');
+    h+=`<div class="tbl-wrap"><table>
+      <tr><th>Loja</th><th>Data</th><th>Categoria</th><th style="text-align:left">Descrição</th><th>Forma</th><th>Valor</th></tr>
+      ${rows}
+      <tr class="tfoot"><td colspan="5">TOTAL ${filtroLojaEstoque?dadosPorLoja.find(d=>d.v===filtroLojaEstoque).l.toUpperCase():'COMPRAS'}</td><td class="neg">${fmt(tot)}</td></tr>
+    </table></div>`;
+  }else{
+    h+='<div class="empty">📦 <div>Nenhuma compra lançada nesse filtro.</div></div>';
+  }
+
+  c.innerHTML=h;
 }
 // ── NOTIFICAÇÕES ──────────────────────────────────────────────
 function notify(msg, tipo) {
