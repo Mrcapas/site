@@ -2939,6 +2939,20 @@ async function renderEstoque(){
 
   c.innerHTML=h;
 }
+// Replica exatamente a regra do CMV Acumulado do Markup (não soma CMV lançado aos domingos)
+function calcCmvAcumulado(){
+  const en=load('entradas');
+  const diasMes=new Date(ST.ano,ST.mes,0).getDate();
+  let cmvAcc=0;
+  for(let d=1;d<=diasMes;d++){
+    const dt=ST.ano+'-'+String(ST.mes).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    const isSun=new Date(dt+'T12:00:00').getDay()===0;
+    if(isSun)continue;
+    const enDia=en.find(r=>r.data===dt);
+    if(enDia)cmvAcc+=(+enDia.cmv||0);
+  }
+  return cmvAcc;
+}
 // ── 5% DO LUCRO (apuração sobre despesas marcadas com ★) ──
 function calcDespesasEstrela(){
   const sa=load('saidas');
@@ -2961,15 +2975,16 @@ function calcDespesasEstrela(){
 function renderLucro5(){
   const c=document.getElementById('content');
   const t=calcTotais();
+  const cmvAcumulado=calcCmvAcumulado();
   const itens=calcDespesasEstrela();
   const totalDesp=itens.reduce((s,i)=>s+i.val,0);
-  const lucro=t.fat-t.cmvTotal-t.taxas-totalDesp;
+  const lucro=t.fat-cmvAcumulado-t.taxas-totalDesp;
   const cinco=lucro*0.05;
 
   let h=`<div class="form-card" style="padding:18px 20px;margin-bottom:22px;max-width:440px">
     <div class="sec-hdr" style="margin-bottom:12px"><h2>Apuração do Mês — ${MESES[ST.mes-1]} ${ST.ano}</h2><div class="sec-line"></div></div>
     <div class="dre-row"><div class="dre-l">(+) Receitas</div><div class="dre-v pos">${fmt(t.fat)}</div></div>
-    <div class="dre-row"><div class="dre-l">(−) CMV</div><div class="dre-v neg">${fmt(t.cmvTotal)}</div></div>
+    <div class="dre-row"><div class="dre-l">(−) CMV Acumulado</div><div class="dre-v neg">${fmt(cmvAcumulado)}</div></div>
     <div class="dre-row"><div class="dre-l">(−) Taxas</div><div class="dre-v neg">${fmt(t.taxas)}</div></div>
     <div class="dre-row"><div class="dre-l">(−) Despesas ★</div><div class="dre-v neg">${fmt(totalDesp)}</div></div>
     <div class="dre-row" style="border-top:1px solid var(--border);margin-top:8px;padding-top:8px">
