@@ -731,7 +731,17 @@ function editCusto(id){
     {id:'obs',label:'Observação',type:'text',value:cu.obs||''},
   ],vals=>{
     Object.assign(cu,vals);
-    saveVerif(v);notify('Custo atualizado!','ok');renderVerif();
+    saveVerif(v);
+    if(cu.tplId){
+      const templates=getCustosTemplates();
+      const tpl=templates.find(t=>t.id===cu.tplId);
+      if(tpl){
+        tpl.nome=cu.nome;tpl.val=cu.val;tpl.forma=cu.forma;tpl.obs=cu.obs;
+        if(cu.venc)tpl.diaVenc=new Date(cu.venc+'T12:00:00').getDate();
+        saveCustosTemplates(templates);
+      }
+    }
+    notify('Custo atualizado!','ok');renderVerif();
   });
 }
 
@@ -1005,6 +1015,56 @@ function delFi(key,id){
   const fi=loadO('fin');fi[key]=(fi[key]||[]).filter(r=>r.id!==id);saveO('fin',fi);renderFin();
 }
 
+// ── CUSTOS RECORRENTES (Custos Fixos e Tributos repetem todo mês automaticamente) ──
+function getCustosTemplates(){
+  try{return JSON.parse(localStorage.getItem('srcapas_custos_tpl_'+ST.empresa)||'[]')}catch{return[]}
+}
+function saveCustosTemplates(t){
+  localStorage.setItem('srcapas_custos_tpl_'+ST.empresa, JSON.stringify(t));
+  pushToFB();
+}
+function getCustosGerados(){
+  try{return JSON.parse(localStorage.getItem(sk('verif_custos_gerados'))||'[]')}catch{return[]}
+}
+function saveCustosGerados(g){
+  localStorage.setItem(sk('verif_custos_gerados'), JSON.stringify(g));
+}
+function vencDoMes(diaVenc,ano,mes){
+  const diasMes=new Date(ano,mes,0).getDate();
+  const dia=Math.min(Math.max(diaVenc||1,1),diasMes);
+  return ano+'-'+String(mes).padStart(2,'0')+'-'+String(dia).padStart(2,'0');
+}
+// Gera, uma vez por mês, os lançamentos de Custos Fixos/Tributos marcados como recorrentes
+function gerarCustosRecorrentes(){
+  const templates=getCustosTemplates().filter(t=>t.ativo!==false);
+  if(!templates.length)return;
+  const gerados=getCustosGerados();
+  const custos=JSON.parse(localStorage.getItem(sk('verif_custos'))||'[]');
+  let mudou=false;
+  templates.forEach(tpl=>{
+    if(gerados.includes(tpl.id))return; // este mês já foi tratado (gerado ou removido manualmente)
+    const jaExiste=custos.some(cu=>cu.tplId===tpl.id);
+    if(!jaExiste){
+      custos.push({id:uuid(),cat:tpl.cat,nome:tpl.nome,val:tpl.val,
+        venc:vencDoMes(tpl.diaVenc,ST.ano,ST.mes),forma:tpl.forma,
+        st:'PENDENTE',obs:tpl.obs||'',boleto:null,comprovante:null,tplId:tpl.id});
+      mudou=true;
+    }
+    gerados.push(tpl.id);
+  });
+  if(mudou){localStorage.setItem(sk('verif_custos'),JSON.stringify(custos));pushToFB();}
+  saveCustosGerados(gerados);
+}
+function pararRecorrencia(tplId){
+  if(!confirm('Isso vai parar de gerar esse lançamento automaticamente nos próximos meses (os meses já lançados não são afetados). Confirma?'))return;
+  const templates=getCustosTemplates();
+  const tpl=templates.find(t=>t.id===tplId);
+  if(tpl)tpl.ativo=false;
+  saveCustosTemplates(templates);
+  renderVerif();
+  notify('Esse lançamento não vai mais se repetir automaticamente.','ok');
+}
+
 // VERIFICAÇÃO
 function getFunsMes(){
   // dados financeiros mensais por funcionário
@@ -1112,6 +1172,7 @@ function iconAnexo(anexo, custoId, campo){
 
 // ── VERIFICAÇÃO MENSAL ──────────────────────────────────────
 function renderVerif(){
+  gerarCustosRecorrentes();
   const v=getVerif();
   const funs=v.f||[];
   const todosC=v.c||[];
@@ -1162,7 +1223,7 @@ function renderVerif(){
                   cu.tipo==='ADIANTAMENTO'?'<span class="badge b-pend" style="font-size:9px;margin-right:4px">ADIANT.</span>':'';
     const funNome=cu.funId?((funs.find(f=>f.id===cu.funId)||{}).nome||'—'):'';
     return`<tr>
-      <td style="text-align:left">${tipoTag}${funNome?'<strong>'+funNome+'</strong> · ':''}${cu.nome}${vencBadge(cu)}
+      <td style="text-align:left">${tipoTag}${funNome?'<strong>'+funNome+'</strong> · ':''}${cu.nome}${cu.tplId?'<span title="Recorrente — gerado automaticamente todo mês" style="margin-left:6px;font-size:11px">🔁</span>':''}${vencBadge(cu)}
         <div style="margin-top:2px">${iconAnexo(cu.boleto,cu.id,'boleto')}${cu.comprovante?'<span style="margin-left:8px">'+iconAnexo(cu.comprovante,cu.id,'comprovante')+'</span>':iconAnexo(null,cu.id,'comprovante')}</div>
       </td>
       <td>${fmt(cu.val)}</td>
@@ -1174,6 +1235,7 @@ function renderVerif(){
       <td style="white-space:nowrap">
         <button class="btn-sm" onclick="toggleEstrelaCusto('${cu.id}')" title="${cu.estrela?'Remover da conta dos 5%':'Marcar para entrar nos 5% do lucro'}" style="margin-right:4px;color:${cu.estrela?'var(--gold)':'var(--dim)'}">${cu.estrela?'★':'☆'}</button>
         <button class="btn-sm btn-ok" onclick="editCusto('${cu.id}')" style="margin-right:4px" title="Editar">✏</button>
+        ${cu.tplId?`<button class="btn-sm" onclick="pararRecorrencia('${cu.tplId}')" style="margin-right:4px" title="Parar de repetir esse lançamento nos próximos meses">🔁✖</button>`:''}
         ${pagarBtn}
         <button class="btn-sm" onclick="delVi('c','${cu.id}')">×</button>
       </td>
@@ -1441,10 +1503,25 @@ async function addCusto(cat){
     catch(e){notify(e.message,'err');return;}
   }
   const get=id=>(document.getElementById(pfx+'-'+id)||{}).value||'';
-  v.c.push({id:uuid(),cat:cat||'FIXO',nome:n,val:+get('v')||0,
-    venc:get('vc'),forma:get('f')||FORMAS[0],
+  const vencVal=get('vc');
+  const item={id:uuid(),cat:cat||'FIXO',nome:n,val:+get('v')||0,
+    venc:vencVal,forma:get('f')||FORMAS[0],
     st:get('st')||'PENDENTE',obs:get('o'),
-    boleto,comprovante:null});
+    boleto,comprovante:null};
+  // Custo Fixo e Tributo viram recorrentes automaticamente (geram sozinhos nos próximos meses)
+  if(cat==='FIXO'||cat==='TRIBUTOS'){
+    const tpl={id:uuid(),cat,nome:n,val:+get('v')||0,
+      diaVenc:vencVal?new Date(vencVal+'T12:00:00').getDate():new Date().getDate(),
+      forma:get('f')||FORMAS[0],obs:get('o'),ativo:true};
+    const templates=getCustosTemplates();
+    templates.push(tpl);
+    saveCustosTemplates(templates);
+    item.tplId=tpl.id;
+    const gerados=getCustosGerados();
+    gerados.push(tpl.id);
+    saveCustosGerados(gerados);
+  }
+  v.c.push(item);
   saveVerif(v);window['showFX']=false;window['showFT']=false;
   renderVerif();notify('Lançamento adicionado!','ok');
 }
