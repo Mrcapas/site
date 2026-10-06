@@ -382,7 +382,13 @@ function _mergeLista(b, l, r){
 }
 
 // ── Estado da sincronização ──
-const _lsSet = Storage.prototype.setItem, _lsRem = Storage.prototype.removeItem;
+const _lsGetRaw = Storage.prototype.getItem, _lsSetRaw = Storage.prototype.setItem, _lsRemRaw = Storage.prototype.removeItem;
+// No endereço de teste as chaves ficam com prefixo próprio no navegador: o teste e o
+// sistema oficial dividem o mesmo navegador e NÃO podem enxergar os dados um do outro.
+const _PFX = _RAIZ === 'srcapas' ? '' : 'TESTE!';
+function _kk(st, k){ return (_PFX && st === window.localStorage && typeof k === 'string' && (k.indexOf('srcapas_') === 0 || k.indexOf('mrc_') === 0)) ? _PFX + k : k; }
+function _gravar(k, v){ _lsSetRaw.call(localStorage, _kk(localStorage, k), v); }
+if (_PFX) Storage.prototype.getItem = function(k){ return _lsGetRaw.call(this, _kk(this, k)); };
 let _aplicandoRemoto = false;
 const _dirty = new Set();     // chaves alteradas aqui e ainda não confirmadas no servidor
 const _base = {};             // último valor confirmado no servidor, por chave (texto canônico)
@@ -390,10 +396,10 @@ const _prontas = new Set();   // lojas já carregadas do servidor nesta sessão
 const _enviando = new Set();  // chaves com envio em andamento
 let _refOuvindo = null, _lojaOuvindo = null, _aoCarregar = null, _resgates = 0;
 try { (JSON.parse(localStorage.getItem('mrc_dirty') || '[]') || []).forEach(function(k){ if (_lojaDaChave(k)) _dirty.add(k); }); } catch(e) {}
-function _salvarDirty(){ try { _lsSet.call(localStorage, 'mrc_dirty', JSON.stringify(Array.from(_dirty))); } catch(e) {} }
+function _salvarDirty(){ try { _gravar('mrc_dirty', JSON.stringify(Array.from(_dirty))); } catch(e) {} }
 function _idAparelho(){
   let d = null;
-  try { d = localStorage.getItem('mrc_device'); if (!d) { d = 'ap' + Math.random().toString(36).slice(2, 10); _lsSet.call(localStorage, 'mrc_device', d); } } catch(e) {}
+  try { d = localStorage.getItem('mrc_device'); if (!d) { d = 'ap' + Math.random().toString(36).slice(2, 10); _gravar('mrc_device', d); } } catch(e) {}
   return d || 'ap_sem_id';
 }
 
@@ -403,7 +409,7 @@ Storage.prototype.setItem = function(k, v){
   const antes = minha ? this.getItem(k) : null;
   // primeira alteração da chave nesta sessão: o valor anterior é a referência para a mescla
   if (minha && _base[k] === undefined && !_dirty.has(k)) _base[k] = _canonStr(antes);
-  try { _lsSet.call(this, k, v); }
+  try { _lsSetRaw.call(this, _kk(this, k), v); }
   catch (e) {
     if (this === window.localStorage && _lojaDaChave(k)) {
       setSyncStatus('⚠ Navegador sem espaço', 'var(--red)');
@@ -417,7 +423,7 @@ Storage.prototype.removeItem = function(k){
   const minha = this === window.localStorage && !_aplicandoRemoto && _lojaDaChave(k);
   const antes = minha ? this.getItem(k) : null;
   if (minha && _base[k] === undefined && !_dirty.has(k)) _base[k] = _canonStr(antes);
-  _lsRem.call(this, k);
+  _lsRemRaw.call(this, _kk(this, k));
   if (minha && _canonStr(antes) !== '') { _dirty.add(k); _salvarDirty(); }
 };
 
@@ -451,8 +457,8 @@ function _escreverLocal(k, val, modelo){
   const limpo = _limpo(val);
   if (limpo === undefined) {
     const vazio = (typeof modelo === 'string' && modelo.charAt(0) === '{') ? '{}' : '[]';
-    if (localStorage.getItem(k) !== null) _lsSet.call(localStorage, k, vazio);
-  } else _lsSet.call(localStorage, k, JSON.stringify(val));
+    if (localStorage.getItem(k) !== null) _gravar(k, vazio);
+  } else _gravar(k, JSON.stringify(val));
 }
 
 // Aplica uma chave vinda do servidor. Devolve true se o que está na tela mudou.
@@ -483,7 +489,7 @@ function _aplicarChave(k, valRemoto){
   // o servidor tem outro valor e este navegador não alterou a chave: vale o servidor
   _guardarResgate(k, _parse(localStr), valRemoto, baseAntes === undefined ? 1 : 3,
     baseAntes === undefined ? 'diferente ao abrir' : 'encolheu no servidor');
-  _lsSet.call(localStorage, k, JSON.stringify(valRemoto));
+  _gravar(k, JSON.stringify(valRemoto));
   _base[k] = cr;
   return true;
 }
@@ -500,7 +506,11 @@ function aplicarDados(rec, loja) {
       if (_aplicarChave(k, rec[k])) mudou = true;
     });
     const locais = [];
-    for (let i = 0; i < localStorage.length; i++) locais.push(localStorage.key(i));
+    for (let i = 0; i < localStorage.length; i++) {
+      let lk = localStorage.key(i);
+      if (_PFX) { if (lk.indexOf(_PFX) !== 0) continue; lk = lk.slice(_PFX.length); }
+      locais.push(lk);
+    }
     locais.forEach(function(k){
       if (_lojaDaChave(k) !== loja || vistas[k]) return;
       if (_aplicarChave(k, undefined)) mudou = true;
