@@ -264,17 +264,17 @@ function saveO(t,d){localStorage.setItem(sk(t),JSON.stringify(d));flashSaved();p
 
 // ── FIREBASE REALTIME DATABASE ─────────────────────────────
 const _FB_URL = 'https://finan-mrcapas-default-rtdb.firebaseio.com';
-// Firebase SDK WebSocket — substitui REST completamente
 firebase.initializeApp({
   apiKey:'AIzaSyAsTJTkvOdMAnAhhMc6taoqviqI6pXyEvg',
   databaseURL:'https://finan-mrcapas-default-rtdb.firebaseio.com',
   projectId:'finan-mrcapas'
 });
 const _db=firebase.database();
-try{_db.setPersistenceEnabled(true);}catch(e){} // dados sobrevivem reload
 window._db=_db;
-window._dbRef=_db.ref('srcapas/bacaxa');
-let _syncTimer = null, _lastFBts = 0, _pollId = null, _fbSSE = null, _pushInProgress = false;
+// Endereço de teste (/financeiro-teste/) usa uma área separada do banco: dá para testar sem tocar nos dados reais.
+const _RAIZ = location.pathname.indexOf('financeiro-teste') >= 0 ? 'srcapas_teste' : 'srcapas';
+window._dbRef=_db.ref(_RAIZ+'/bacaxa');
+let _syncTimer = null;
 
 function setSyncStatus(msg, cor) {
   try {
@@ -283,111 +283,493 @@ function setSyncStatus(msg, cor) {
   } catch(e) {}
 }
 
-function aplicarDados(rec) {
-  try {
-    if (!rec || typeof rec !== 'object') return;
-    Object.entries(rec).forEach(function(entry) {
-      const k = entry[0], v = entry[1];
-      if (k && k.startsWith('srcapas_')) {
-        localStorage.setItem(k, JSON.stringify(v));
-      }
+// ══ SINCRONIZAÇÃO SEGURA (versão 3 — out/2026) ══════════════════════════════
+// NÃO voltar para "gravar a loja inteira de uma vez" (_dbRef.set com tudo):
+// foi isso que apagou lançamentos. As regras desta camada:
+//  1. Cada chave (ex.: entradas de uma loja em um mês) é gravada sozinha,
+//     sempre no nó da SUA loja, por transaction().
+//  2. Só sobem as chaves que foram alteradas aqui. A marca de "pendente" fica
+//     no próprio localStorage (mrc_d:<chave>), junto com o valor que a chave
+//     tinha antes da alteração (a base da mescla). Sobrevive a recarregar a
+//     página e é compartilhada entre abas do mesmo navegador.
+//  3. Antes de gravar, o valor é mesclado com o do servidor, registro por
+//     registro (pelo id), usando essa base. Ninguém apaga o lançamento de ninguém.
+//  4. Ao receber os dados de uma loja, só valem as chaves daquela loja.
+//  5. Esta versão guarda os dados do navegador com prefixo próprio. Versões
+//     antigas do sistema (e a página antiga da raiz do site) não alcançam
+//     esses dados, e esta versão nunca confia no que elas gravaram.
+//  6. Quando o servidor traz menos do que o navegador tinha, a diferença é
+//     guardada primeiro no navegador (mrc_q:...) e enviada para
+//     <raiz>_resgate. Só some daqui depois de o servidor confirmar.
+// Qualquer localStorage.setItem em chave "srcapas_..." é percebido sozinho e
+// enviado — não é preciso chamar nada além de pushToFB() (ou save/saveO).
+const SYNC_VERSAO = 3;
+// As lojas vêm do seletor da tela: loja nova no seletor já entra na sincronização.
+const _LOJAS_SYNC = (function(){
+  let l = [];
+  try { l = Array.from(document.querySelectorAll('#empresa-sel option')).map(function(o){ return o.value; }).filter(Boolean); } catch(e) {}
+  if (!l.length) l = ['bacaxa','araruama','araruama_mall'];
+  return l.sort(function(a, b){ return b.length - a.length; }); // a mais longa primeiro
+})();
+function _lojaDaChave(k){
+  if (typeof k !== 'string' || k.indexOf('srcapas_') !== 0) return null;
+  const base = k.replace(/_\d{4}_\d{2}$/, '');
+  for (let i = 0; i < _LOJAS_SYNC.length; i++) {
+    if (base.endsWith('_' + _LOJAS_SYNC[i])) return _LOJAS_SYNC[i];
+  }
+  return null;
+}
+
+// Mesma limpeza que o Firebase faz ao guardar: some null, [] e {}.
+function _limpo(v){
+  if (v === null || v === undefined) return undefined;
+  if (Array.isArray(v)) {
+    const a = v.map(_limpo).filter(function(x){ return x !== undefined; });
+    return a.length ? a : undefined;
+  }
+  if (typeof v === 'object') {
+    const o = {};
+    Object.keys(v).sort().forEach(function(k){ const x = _limpo(v[k]); if (x !== undefined) o[k] = x; });
+    return Object.keys(o).length ? o : undefined;
+  }
+  return v;
+}
+function _canon(v){ const c = _limpo(v); return c === undefined ? '' : JSON.stringify(c); }
+function _parse(s){ if (s === null || s === undefined || s === '') return undefined; try { return JSON.parse(s); } catch(e) { return undefined; } }
+function _canonStr(s){ return _canon(_parse(s)); }
+function _ehObj(v){ return v !== null && typeof v === 'object' && !Array.isArray(v); }
+function _temId(a){ return a.every(function(x){ return _ehObj(x) && x.id !== undefined && x.id !== null; }); }
+// O Firebase devolve uma lista com buracos como objeto {"0":…,"5":…}. Volta a ser lista.
+function _comoLista(v){
+  if (!_ehObj(v)) return v;
+  const ks = Object.keys(v);
+  if (!ks.length || !ks.every(function(k){ return /^\d+$/.test(k); })) return v;
+  return ks.sort(function(a, b){ return a - b; }).map(function(k){ return v[k]; });
+}
+// Caractere que o Firebase não aceita em nome de campo. Devolve o nome ruim, ou null.
+function _chaveInvalida(v){
+  if (Array.isArray(v)) { for (let i = 0; i < v.length; i++) { const r = _chaveInvalida(v[i]); if (r !== null) return r; } return null; }
+  if (_ehObj(v)) {
+    const ks = Object.keys(v);
+    for (let i = 0; i < ks.length; i++) {
+      if (ks[i] === '' || /[.$#\[\]\/\u0000-\u001f\u007f]/.test(ks[i])) return ks[i];
+      const r = _chaveInvalida(v[ks[i]]); if (r !== null) return r;
+    }
+  }
+  return null;
+}
+
+// Mescla de 3 vias: base = valor antes da alteração local; local = o que está
+// neste navegador; remoto = o que está no servidor agora. _mi conta os
+// conflitos resolvidos (para avisar o usuário).
+let _mi = null;
+function _semNulos(v){ return Array.isArray(v) ? v.filter(function(x){ return x !== null && x !== undefined; }) : v; }
+function _merge3(base, local, remoto){
+  if (Array.isArray(local) || Array.isArray(base)) { remoto = _comoLista(remoto); }
+  if (Array.isArray(local) || Array.isArray(remoto)) { base = _comoLista(base); }
+  base = _semNulos(base); local = _semNulos(local); remoto = _semNulos(remoto);
+  const cb = _canon(base), cl = _canon(local), cr = _canon(remoto);
+  if (cl === cr) return remoto;
+  if (cl === cb) return remoto;   // só o servidor mudou
+  if (cr === cb) return local;    // só este navegador mudou
+  const lArr = Array.isArray(local) || local === undefined || local === null;
+  const rArr = Array.isArray(remoto) || remoto === undefined || remoto === null;
+  if ((Array.isArray(local) || Array.isArray(remoto)) && lArr && rArr) {
+    const l = local || [], r = remoto || [], b = Array.isArray(base) ? base : [];
+    if (_temId(l) && _temId(r) && _temId(b)) return _mergeLista(b, l, r);
+    // lista de valores simples (ex.: ids de custos já gerados no mês)
+    const kb = {}, kl = {}, visto = {}, out = [];
+    b.forEach(function(x){ kb[JSON.stringify(x)] = 1; });
+    l.forEach(function(x){ kl[JSON.stringify(x)] = 1; });
+    r.forEach(function(x){ const k = JSON.stringify(x); if (kb[k] && !kl[k]) return; if (!visto[k]) { visto[k] = 1; out.push(x); } });
+    l.forEach(function(x){ const k = JSON.stringify(x); if (!visto[k] && !kb[k]) { visto[k] = 1; out.push(x); } });
+    return out;
+  }
+  const lObj = _ehObj(local) || local === undefined || local === null;
+  const rObj = _ehObj(remoto) || remoto === undefined || remoto === null;
+  if ((_ehObj(local) || _ehObj(remoto)) && lObj && rObj) {
+    const l = local || {}, r = remoto || {}, b = _ehObj(base) ? base : {}, out = {};
+    Object.keys(r).concat(Object.keys(l)).forEach(function(k){
+      if (Object.prototype.hasOwnProperty.call(out, k)) return;
+      const m = _merge3(b[k], l[k], r[k]);
+      if (m !== undefined && m !== null) out[k] = m;
     });
+    return out;
+  }
+  if (_mi) _mi.sobrepostos++;
+  return local; // os dois mudaram o mesmo valor simples: vale o deste navegador
+}
+function _mergeLista(b, l, r){
+  const mb = {}, ml = {}, mr = {}, tplR = {}, out = [];
+  b.forEach(function(x){ mb[String(x.id)] = x; });
+  l.forEach(function(x){ ml[String(x.id)] = x; });
+  r.forEach(function(x){ mr[String(x.id)] = x; if (x.tplId) tplR[String(x.tplId)] = 1; });
+  r.forEach(function(x){
+    const id = String(x.id), lx = ml[id], bx = mb[id];
+    if (lx === undefined) {
+      if (bx === undefined) { out.push(x); return; }                 // novo no servidor
+      if (_canon(bx) === _canon(x)) return;                           // apagado aqui, intacto lá: apaga
+      out.push(x); if (_mi) _mi.mantidos++; return;                   // apagado aqui, mas alterado lá: mantém
+    }
+    out.push(_merge3(bx, lx, x));
+  });
+  l.forEach(function(x){
+    const id = String(x.id);
+    if (mr[id] !== undefined) return;
+    const bx = mb[id];
+    if (bx !== undefined) {
+      if (_canon(bx) === _canon(x)) return;                           // apagado lá, intacto aqui: apaga
+      if (_mi) _mi.mantidos++;                                        // apagado lá, mas alterado aqui: mantém
+    } else if (x.tplId && tplR[String(x.tplId)]) return;              // custo recorrente já gerado por outro navegador
+    out.push(x);
+  });
+  return out;
+}
+
+// ── Armazenamento do navegador, com prefixo próprio desta versão ──
+const _lsGetRaw = Storage.prototype.getItem, _lsSetRaw = Storage.prototype.setItem, _lsRemRaw = Storage.prototype.removeItem;
+const _PFX = _RAIZ === 'srcapas' ? 'V2!' : 'TESTE!';
+function _ehDado(k){ return typeof k === 'string' && k.indexOf('srcapas_') === 0 && k !== 'srcapas_theme'; }
+function _kk(st, k){ return (st === window.localStorage && typeof k === 'string' && (_ehDado(k) || k.indexOf('mrc_') === 0)) ? _PFX + k : k; }
+function _get(k){ return _lsGetRaw.call(localStorage, _PFX + k); }
+function _set(k, v){ _lsSetRaw.call(localStorage, _PFX + k, v); }
+function _del(k){ _lsRemRaw.call(localStorage, _PFX + k); }
+function _chaves(prefixo){
+  const out = [], alvo = _PFX + prefixo;
+  for (let i = 0; i < localStorage.length; i++) { const rk = localStorage.key(i); if (rk && rk.indexOf(alvo) === 0) out.push(rk.slice(_PFX.length)); }
+  return out;
+}
+function _avisar(msg){ try { notify(msg, 'err'); } catch(e) {} console.warn('[SYNC] ' + msg); }
+let _avisouEspaco = 0;
+function _semEspaco(recebendo){
+  setSyncStatus('⚠ Navegador sem espaço', 'var(--red)');
+  if (recebendo && Date.now() - _avisouEspaco < 60000) return;
+  _avisouEspaco = Date.now();
+  _avisar(recebendo
+    ? '⚠ Memória do navegador cheia — não foi possível atualizar os dados desta tela. Avise o financeiro.'
+    : '⚠ Memória do navegador cheia — este lançamento NÃO foi salvo. Avise o financeiro.');
+}
+function _idAparelho(){
+  let d = null;
+  try { d = _get('mrc_device'); if (!d) { d = 'ap' + Math.random().toString(36).slice(2, 10); _set('mrc_device', d); } } catch(e) {}
+  return d || 'ap_sem_id';
+}
+
+// ── Pendências: mrc_d:<chave> = {b: valor canônico antes da alteração, t: quando} ──
+const _enviando = new Set();  // chaves com envio em andamento nesta aba
+const _prontas = new Set();   // lojas já carregadas do servidor nesta sessão
+let _refOuvindo = null, _lojaOuvindo = null, _aoCarregar = null, _online = null, _conexaoIniciada = false;
+function _pend(k){ const s = _get('mrc_d:' + k); if (s === null) return null; const o = _parse(s); return _ehObj(o) ? o : { b: '' }; }
+function _marcarPend(k, baseCanon){ _set('mrc_d:' + k, JSON.stringify({ b: baseCanon || '', t: Date.now() })); }
+function _limparPend(k){ _del('mrc_d:' + k); }
+function _todasPend(){ return _chaves('mrc_d:').map(function(x){ return x.slice(6); }).filter(function(k){ return _lojaDaChave(k); }); }
+function _pendentes(){ return _todasPend().filter(function(k){ return !_enviando.has(k); }); }
+function _contarPend(){ return _todasPend().length; }
+function _statusPadrao(){
+  const n = _contarPend();
+  if (_online === false) setSyncStatus(n ? '⚠ Sem conexão — ' + n + ' alteração(ões) guardada(s) aqui' : '⚠ Sem conexão', 'var(--red)');
+  else if (n) setSyncStatus('⟳ ' + n + ' alteração(ões) a enviar', 'var(--amber)');
+  else setSyncStatus('• Online', 'var(--green)');
+}
+
+// Toda escrita do sistema em chave de loja passa por aqui e fica marcada para envio.
+Storage.prototype.getItem = function(k){ return _lsGetRaw.call(this, _kk(this, k)); };
+Storage.prototype.setItem = function(k, v){
+  if (this !== window.localStorage || !_ehDado(k)) return _lsSetRaw.call(this, _kk(this, k), v);
+  if (!_lojaDaChave(k)) {
+    _avisar('⚠ Esta loja não está cadastrada na sincronização. O lançamento NÃO foi salvo — avise o suporte.');
+    throw new Error('loja desconhecida na chave ' + k);
+  }
+  const antes = _get(k), sv = String(v);
+  if (_canonStr(antes) === _canonStr(sv)) { try { _set(k, sv); } catch (e) { _semEspaco(false); throw e; } return; }
+  const ruim = _chaveInvalida(_parse(sv));
+  if (ruim !== null) {
+    _avisar('⚠ O nome "' + ruim + '" tem um caractere que o banco não aceita ( . $ # [ ] / ). Corrija e salve de novo — nada foi gravado.');
+    throw new Error('nome de campo inválido: ' + ruim);
+  }
+  const jaPend = _pend(k) !== null;
+  try { if (!jaPend) _marcarPend(k, _canonStr(antes)); _set(k, sv); }
+  catch (e) { if (!jaPend) { try { _limparPend(k); } catch(_) {} } _semEspaco(false); throw e; }
+};
+Storage.prototype.removeItem = function(k){
+  if (this !== window.localStorage || !_ehDado(k) || !_lojaDaChave(k)) return _lsRemRaw.call(this, _kk(this, k));
+  const antes = _get(k);
+  if (_canonStr(antes) !== '' && _pend(k) === null) _marcarPend(k, _canonStr(antes));
+  _del(k);
+};
+
+// ── Rede de segurança ──
+// O que existe em `localVal` e não existe em `remotoVal` (registros por id, itens de lista, campos de objeto).
+function _perdas(localVal, remotoVal){
+  const out = [];
+  (function anda(l, r, onde){
+    if (l === undefined || l === null) return;
+    if (Array.isArray(l)) {
+      const rr = Array.isArray(_comoLista(r)) ? _comoLista(r) : [];
+      if (l.length && _temId(l)) {
+        const ri = {}; rr.forEach(function(x){ if (_ehObj(x) && x.id !== undefined && x.id !== null) ri[String(x.id)] = 1; });
+        l.forEach(function(x){ if (!ri[String(x.id)]) out.push({ onde: onde, registro: x }); });
+      } else {
+        const rs = {}; rr.forEach(function(x){ rs[JSON.stringify(x)] = 1; });
+        l.forEach(function(x){ if (_limpo(x) !== undefined && !rs[JSON.stringify(x)]) out.push({ onde: onde, registro: x }); });
+      }
+    } else if (_ehObj(l)) {
+      const ro = _ehObj(r) ? r : {};
+      Object.keys(l).forEach(function(c){
+        const lv = l[c]; if (_limpo(lv) === undefined) return;
+        if (_limpo(ro[c]) === undefined) out.push({ onde: onde + '>' + c, registro: lv });
+        else if (Array.isArray(lv) || _ehObj(lv)) anda(lv, ro[c], onde + '>' + c);
+      });
+    } else if (_limpo(r) === undefined) out.push({ onde: onde, registro: l });
+  })(localVal, remotoVal, '');
+  return out;
+}
+// Guarda a diferença no navegador (síncrono; lança erro se não couber). Sobe depois, com confirmação.
+function _quarentena(k, perdidos, motivo){
+  const id = Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+  _set('mrc_q:' + id, JSON.stringify({ chave: k, loja: _lojaDaChave(k) || 'sem_loja', quando: new Date().toISOString(), motivo: motivo, qtd: perdidos.length, itens: perdidos }));
+}
+const _qEnviando = {};
+function _enviarQuarentena(){
+  _chaves('mrc_q:').forEach(function(qk){
+    if (_qEnviando[qk]) return;
+    const o = _parse(_get(qk));
+    if (!_ehObj(o)) { _del(qk); return; }
+    _qEnviando[qk] = 1;
+    let p;
+    try { p = _db.ref(_RAIZ + '_resgate/' + (o.loja || 'sem_loja') + '/' + _idAparelho() + '/' + qk.slice(6)).set(_limpo(o) || null); }
+    catch (e) { delete _qEnviando[qk]; console.warn('[resgate]', e && e.message); return; }
+    p.then(function(){ _del(qk); delete _qEnviando[qk]; })
+     .catch(function(e){ delete _qEnviando[qk]; console.warn('[resgate] ainda não confirmado, tenta de novo depois:', e && e.message); });
+  });
+}
+// Uma vez por loja e por navegador: o que a versão antiga deixou guardado aqui e o
+// servidor não tem vai para o resgate. Os dados antigos não são alterados nem usados.
+function _conferirNavegadorAntigo(loja, rec){
+  if (_RAIZ !== 'srcapas' || _get('mrc_m:' + loja) !== null) return;
+  let total = 0, falhou = false;
+  const antigas = [];
+  for (let i = 0; i < localStorage.length; i++) { const rk = localStorage.key(i); if (rk && rk.indexOf('srcapas_') === 0 && _lojaDaChave(rk) === loja) antigas.push(rk); }
+  antigas.forEach(function(rk){
+    const p = _perdas(_parse(_lsGetRaw.call(localStorage, rk)), rec[rk]);
+    if (!p.length) return;
+    try { _quarentena(rk, p, 'guardado só no navegador pela versão antiga'); total += p.length; } catch (e) { falhou = true; }
+  });
+  // Marca como conferido mesmo se algo não coube: os dados antigos continuam intactos neste
+  // navegador (esta versão nunca os apaga), e repetir a cópia só duplicaria o que já subiu.
+  try { _set('mrc_m:' + loja, String(Date.now())); } catch(e) {}
+  if (falhou) _avisar('⚠ Há dados antigos guardados neste navegador que não puderam ser copiados para conferência. Não limpe o navegador e avise o suporte.');
+  if (total) {
+    console.warn('[SYNC] ' + total + ' registro(s) da versão antiga existiam só neste navegador (' + loja + ') — cópia enviada para ' + _RAIZ + '_resgate');
+    try { notify('Encontrei ' + total + ' registro(s) guardados só neste navegador pela versão antiga. Uma cópia foi enviada para conferência — avise o financeiro.', 'info'); } catch(e) {}
+  }
+}
+
+function _escreverLocal(k, val, modelo){
+  const limpo = _limpo(val);
+  if (limpo === undefined) {
+    const vazio = (typeof modelo === 'string' && modelo.charAt(0) === '{') ? '{}' : '[]';
+    if (_get(k) !== null) _set(k, vazio);
+  } else _set(k, JSON.stringify(val));
+}
+
+// Aplica uma chave vinda do servidor. Devolve true se o que está na tela mudou.
+function _aplicarChave(k, valRemoto, aoVivo){
+  if (_enviando.has(k)) return false; // o envio em andamento resolve esta chave ao terminar
+  const localStr = _get(k), local = _parse(localStr);
+  if (Array.isArray(local)) valRemoto = _comoLista(valRemoto);
+  const cr = _canon(valRemoto), cl = _canon(local);
+  const pd = _pend(k);
+  try {
+    if (pd) {                                   // há alteração local ainda não enviada (desta ou de outra aba)
+      if (cl === cr) { _limparPend(k); return false; }
+      const m = _merge3(_parse(pd.b), local, valRemoto);
+      const cm = _canon(m);
+      if (cm === cr) { _escreverLocal(k, m, localStr); _limparPend(k); return cm !== cl; }
+      _marcarPend(k, cr);                       // a base passa a ser o que o servidor tem agora
+      if (cm === cl) return false;
+      _escreverLocal(k, m, localStr);
+      return true;
+    }
+    if (cl === cr) return false;
+    // O servidor tem outro valor e não há nada pendente aqui: vale o servidor.
+    // Se vários registros somem de uma vez, guarda a diferença antes de sobrescrever.
+    // aoVivo = a loja já estava carregada nesta sessão; ao abrir, diferenças pequenas são esperadas
+    // (o que outros apagaram enquanto este navegador estava fechado).
+    const perdidos = _perdas(local, valRemoto);
+    if (perdidos.length >= (aoVivo ? 2 : 3)) {
+      _quarentena(k, perdidos, aoVivo ? 'sumiu do servidor de uma vez' : 'diferente ao abrir a loja');
+      if (aoVivo && perdidos.length >= 3) { try { notify('⚠ ' + perdidos.length + ' lançamento(s) sumiram do servidor de uma vez (provável navegador com a versão antiga aberta). Uma cópia foi guardada — avise o financeiro.', 'err'); } catch(_) {} }
+    }
+    _escreverLocal(k, valRemoto, localStr);
+    return true;
+  } catch (e) { _semEspaco(true); console.error('[SYNC] não coube no navegador:', k, e && e.message); return false; }
+}
+function aplicarDados(rec, loja) {
+  loja = loja || ST.empresa;
+  let mudou = false;
+  if (!rec || typeof rec !== 'object') rec = {};
+  const aoVivo = _prontas.has(loja);
+  try {
+    const vistas = {};
+    Object.keys(rec).forEach(function(k){
+      if (_lojaDaChave(k) !== loja) return;   // regra 4: ignora cópias de outras lojas
+      vistas[k] = 1;
+      if (_aplicarChave(k, rec[k], aoVivo)) mudou = true;
+    });
+    _chaves('srcapas_').forEach(function(k){
+      if (_lojaDaChave(k) !== loja || vistas[k]) return;
+      if (_aplicarChave(k, undefined, aoVivo)) mudou = true;
+    });
+    _conferirNavegadorAntigo(loja, rec);
   } catch(e) { console.error('aplicarDados erro:', e); }
+  _enviarQuarentena();
+  return mudou;
 }
 
 function scheduleSync() {
-  // Push imediato + debounce para não duplicar
   clearTimeout(_syncTimer);
   _syncTimer = setTimeout(pushToFB, 200);
 }
 
-function syncFromFB() {
-  setSyncStatus('⟳ Carregando...', 'var(--amber)');
-  return _dbRef.once('value')
-    .then(function(snap) {
-      var rec = snap.val();
-      if (rec && typeof rec === 'object' && rec._ts) {
-        _lastFBts = rec._ts;
-        aplicarDados(rec);
-        setSyncStatus('✓ Sincronizado', 'var(--green)');
-        setTimeout(function() { setSyncStatus('• Online','var(--green)'); }, 3000);
-      } else {
-        setSyncStatus('• Online (vazio)', 'var(--green)');
-        setTimeout(function() { setSyncStatus('',''); }, 3000);
-      }
-    })
-    .catch(function(e) {
-      setSyncStatus('• Local', 'var(--dim)');
-      console.warn('[FB syncFromFB]', e.message);
-    });
-}
-
-function _coletaDados(ts) {
-  var d = { _ts: ts || Date.now() };
+function _enviarChave(k){
+  const loja = _lojaDaChave(k), info = { mantidos: 0, sobrepostos: 0 };
+  let usado = null, p;
+  _enviando.add(k);
   try {
-    for (var i = 0; i < localStorage.length; i++) {
-      var k = localStorage.key(i);
-      if (k && k.startsWith('srcapas_')) {
-        try { d[k] = JSON.parse(localStorage.getItem(k)); }
-        catch(e) { d[k] = localStorage.getItem(k); }
-      }
-    }
-  } catch(e) {}
-  return d;
-}
-function pushToFB() {
-  var ts = Date.now();
-  var dados = _coletaDados(ts);
-  if (Object.keys(dados).length <= 1) return Promise.resolve();
-  setSyncStatus('⟳ Salvando...', 'var(--amber)');
-  _pushInProgress = true;
-  return _dbRef.set(dados)
-    .then(function() {
-      _pushInProgress = false;
-      _lastFBts = ts;
-      setSyncStatus('✓ Salvo', 'var(--green)');
-      setTimeout(function() { setSyncStatus('• Online','var(--green)'); }, 2000);
-      console.log('[FB PUSH OK] ts='+ts);
-    })
-    .catch(function(e) {
-      _pushInProgress = false;
-      setSyncStatus('⚠ '+e.message,'var(--red)');
-      notify('Erro ao salvar: '+e.message,'err');
-      console.error('[FB PUSH FALHOU]', e.message);
+    p = _db.ref(_RAIZ + '/' + loja + '/' + k).transaction(function(atual){
+      const pd = _pend(k);
+      if (!pd) return;                          // outra aba já enviou: nada a fazer
+      usado = _get(k);
+      info.mantidos = 0; info.sobrepostos = 0; _mi = info;
+      let m;
+      try { m = _merge3(_parse(pd.b), _parse(usado), atual === null ? undefined : atual); } finally { _mi = null; }
+      const limpo = _limpo(m);
+      return limpo === undefined ? null : limpo;
     });
-}
-
-
-function _mergeFB(rec) {
-  if (!rec || typeof rec !== 'object') return;
-  Object.entries(rec).forEach(function(entry) {
-    var k = entry[0], fbVal = entry[1];
-    if (!k || !k.startsWith('srcapas_')) return;
-    var localStr = localStorage.getItem(k);
-    if (!localStr) { localStorage.setItem(k, JSON.stringify(fbVal)); return; }
+  } catch (e) { _enviando.delete(k); return Promise.resolve({ k: k, loja: loja, ok: false, erro: e }); }
+  return p.then(function(r){
+    _enviando.delete(k);
+    if (!r || !r.committed) return { k: k, loja: loja, ok: true, mudouLocal: false, conflitos: 0 };
+    const val = r.snapshot ? r.snapshot.val() : null;
+    const cr = _canon(val === null ? undefined : val);
+    const agora = _get(k);
+    let mudouLocal = false;
     try {
-      var localVal = JSON.parse(localStr);
-      if (Array.isArray(fbVal) && Array.isArray(localVal)) {
-        var byId = {};
-        localVal.forEach(function(it) { if (it.id) byId[it.id] = it; });
-        fbVal.forEach(function(it) { if (it.id && !byId[it.id]) byId[it.id] = it; });
-        var merged = Object.values(byId).sort(function(a,b){ return (a.data||'').localeCompare(b.data||''); });
-        localStorage.setItem(k, JSON.stringify(merged));
-      } else { localStorage.setItem(k, JSON.stringify(fbVal)); }
-    } catch(e) { localStorage.setItem(k, JSON.stringify(fbVal)); }
+      if (_canonStr(agora) === cr) _limparPend(k);
+      else if (agora === usado) {               // o servidor devolveu a mescla com o que outros lançaram
+        _escreverLocal(k, val === null ? undefined : val, agora); _limparPend(k); mudouLocal = true;
+      } else _marcarPend(k, _canonStr(usado));  // houve novo lançamento durante o envio: sobe na próxima, a partir do que foi enviado
+    } catch (e) { _semEspaco(true); }
+    return { k: k, loja: loja, ok: true, mudouLocal: mudouLocal, conflitos: info.mantidos + info.sobrepostos };
+  }).catch(function(e){
+    _enviando.delete(k);
+    return { k: k, loja: loja, ok: false, erro: e };
   });
 }
-function syncManual(){
-  setSyncStatus('⟳ Sincronizando...', 'var(--amber)');
+function pushToFB() {
   clearTimeout(_syncTimer); _syncTimer = null;
-  _dbRef.once('value')
-    .then(function(snap){
-      var rec = snap.val();
-      if (rec && rec._ts) { _lastFBts = rec._ts; aplicarDados(rec); }
-      return pushToFB();
-    })
-    .then(function(){ render(); notify('✓ Sincronizado!','ok'); })
-    .catch(function(e){ render(); notify('⚠ '+e.message,'info'); });
+  const lote = _pendentes();
+  if (!lote.length) { _statusPadrao(); return Promise.resolve(); }
+  if (_online !== false) setSyncStatus('⟳ Salvando...', 'var(--amber)'); else _statusPadrao();
+  return Promise.all(lote.map(_enviarChave)).then(function(res){
+    const falhas = res.filter(function(x){ return !x.ok; });
+    const lojas = {};
+    res.forEach(function(x){ if (x.ok) lojas[x.loja] = 1; });
+    // _ts: aviso de "mudou" para navegadores que ainda estejam com a versão antiga aberta
+    Object.keys(lojas).forEach(function(l){ try { _db.ref(_RAIZ + '/' + l + '/_ts').set(Date.now()).catch(function(){}); } catch(e) {} });
+    if (falhas.length) {
+      const msg = (falhas[0].erro && falhas[0].erro.message) || 'falha ao salvar';
+      setSyncStatus('⚠ ' + msg.slice(0, 60), 'var(--red)');
+      _avisar('Erro ao salvar na nuvem: ' + msg.slice(0, 120) + ' — o lançamento ficou guardado neste navegador e será reenviado.');
+      console.error('[FB PUSH FALHOU]', falhas);
+    } else {
+      setSyncStatus('✓ Salvo', 'var(--green)');
+      setTimeout(_statusPadrao, 2000);
+    }
+    const nConf = res.reduce(function(s, x){ return s + (x.conflitos || 0); }, 0);
+    if (nConf) { try { notify('Outra pessoa alterou os mesmos lançamentos ao mesmo tempo (' + nConf + '). Nada foi apagado: confira os valores na tela.', 'info'); } catch(e) {} }
+    if (res.some(function(x){ return x.mudouLocal; })) { try { render(); } catch(e) {} }
+    if (!falhas.length && _pendentes().length) scheduleSync();
+  });
+}
+
+function _iniciarConexao(){
+  if (_conexaoIniciada) return; _conexaoIniciada = true;
+  try {
+    _db.ref('.info/connected').on('value', function(s){
+      _online = s.val() === true;
+      _statusPadrao();
+      if (_online) { if (_pendentes().length) scheduleSync(); _enviarQuarentena(); }
+    });
+  } catch(e) {}
+  // Outra aba deste navegador alterou os dados: atualiza a tela e garante o envio.
+  let tRender = null, tPush = null;
+  window.addEventListener('storage', function(ev){
+    if (!ev.key || ev.key.indexOf(_PFX) !== 0) return;
+    const k = ev.key.slice(_PFX.length);
+    if (k.indexOf('srcapas_') === 0 && _lojaDaChave(k) === ST.empresa) { clearTimeout(tRender); tRender = setTimeout(function(){ try { render(); } catch(e) {} }, 400); }
+    if (k.indexOf('mrc_d:') === 0) { clearTimeout(tPush); tPush = setTimeout(function(){ if (ev.newValue !== null) pushToFB(); else _statusPadrao(); }, 2500); }
+  });
+}
+function startRealtimeSync() {
+  _iniciarConexao();
+  if (_refOuvindo) { try { _refOuvindo.off(); } catch(e) {} }
+  const loja = ST.empresa, ref = _db.ref(_RAIZ + '/' + loja);
+  _refOuvindo = ref; _lojaOuvindo = loja;
+  ref.on('value', function(snap){
+    if (_refOuvindo !== ref || ST.empresa !== loja) return;
+    const mudou = aplicarDados(snap.val() || {}, loja);
+    _prontas.add(loja);
+    if (_aoCarregar) { const f = _aoCarregar; _aoCarregar = null; f(); }
+    else if (mudou) {
+      try { render(); } catch(e) {}
+      setSyncStatus('✓ Ao vivo', 'var(--green)');
+      setTimeout(_statusPadrao, 2000);
+    }
+    if (_pendentes().length) scheduleSync();
+  }, function(err){
+    console.warn('[FB listener erro]', err && err.message);
+    setSyncStatus('⚠ ' + ((err && err.message) || 'sem conexão').slice(0, 60), 'var(--red)');
+    _avisar('Não foi possível ler os dados desta loja: ' + ((err && err.message) || 'erro') + '.');
+  });
+}
+// Carrega a loja ativa do servidor. Resolve com true quando os dados chegaram,
+// ou com false após 8s sem resposta (sem internet): nesse caso o sistema abre
+// com o que há no navegador e envia os lançamentos quando a conexão voltar.
+function _carregarLoja(){
+  if (_LOJAS_SYNC.indexOf(ST.empresa) < 0) _avisar('⚠ A loja "' + ST.empresa + '" não está cadastrada na sincronização. Nada será salvo nela — avise o suporte.');
+  setSyncStatus('⟳ Carregando...', 'var(--amber)');
+  return new Promise(function(resolve){
+    let feito = false;
+    function fim(ok){
+      if (feito) return; feito = true;
+      if (ok) { setSyncStatus('✓ Sincronizado', 'var(--green)'); setTimeout(_statusPadrao, 2000); }
+      else setSyncStatus('⚠ Sem conexão — será enviado quando voltar', 'var(--red)');
+      resolve(ok);
+    }
+    const meu = function(){ fim(true); };
+    _aoCarregar = meu;
+    startRealtimeSync();
+    if (_pendentes().length) scheduleSync();   // pendências de qualquer loja, inclusive de sessão anterior
+    setTimeout(function(){
+      if (feito) return;
+      if (_aoCarregar === meu) { _aoCarregar = null; fim(false); }
+      else { feito = true; resolve(false); }   // outra loja foi escolhida nesse meio tempo
+    }, 8000);
+  });
+}
+function syncFromFB() {
+  if (_lojaOuvindo === ST.empresa && _prontas.has(ST.empresa)) return Promise.resolve(true);
+  return _carregarLoja();
+}
+function syncManual(){
+  _carregarLoja().then(function(ok){
+    return pushToFB().then(function(){
+      render();
+      notify(ok ? '✓ Sincronizado!' : '⚠ Sem conexão com a nuvem', ok ? 'ok' : 'info');
+    });
+  }).catch(function(e){ render(); notify('⚠ ' + e.message, 'info'); });
 }
 
 function initApp(){
@@ -395,20 +777,17 @@ function initApp(){
   ms.innerHTML=MESES.map((m,i)=>`<option value="${i+1}"${i+1===ST.mes?' selected':''}>${m}</option>`).join('');
   const y=ST.ano;
   ys.innerHTML=[y-1,y,y+1].map(v=>`<option value="${v}"${v===y?' selected':''}>${v}</option>`).join('');
-  syncFromFB().then(function(){ render(); }).catch(function(){ render(); });
-  migrarVendedores();
-  startRealtimeSync(); // polling 5s + SSE bônus
+  document.getElementById('content').innerHTML='<div class="empty">⏳ <div>Carregando dados da loja…</div></div>';
+  syncFromFB().then(function(){ migrarVendedores(); render(); }).catch(function(){ render(); });
 }
 function changeEmpresa(v){
   ST.empresa=v;
   const names={bacaxa:'Bacaxá / Saquarema',araruama:'Araruama (Centro)',araruama_mall:'Araruama (OpenMall)'};
   document.getElementById('sb-empresa').textContent=names[v]||v;
-  // Atualizar caminho no Firebase por loja
-  if(window._db){
-    window._dbRef=_db.ref('srcapas/'+v);
-    startRealtimeSync();
-  }
-  render();
+  // Cada loja tem seu nó no Firebase. Só mostra (e só deixa gravar) depois de carregar a loja do servidor.
+  window._dbRef=_db.ref(_RAIZ+'/'+v);
+  document.getElementById('content').innerHTML='<div class="empty">⏳ <div>Carregando dados da loja…</div></div>';
+  _carregarLoja().then(function(){ if(ST.empresa===v){ migrarVendedores(); render(); } });
 }
 // Config por loja: quais bancos existem e onde vai o PIX
 function getStoreConfig(){
@@ -2683,49 +3062,9 @@ function cancelVoice(){
 }
 
 
-// ── SYNC EM TEMPO REAL (SSE Firebase) ─────────────────────────
-function _silentSync() {
-  _dbRef.once('value')
-    .then(function(snap) {
-      var rec = snap.val();
-      if (!rec || !rec._ts) return;
-      if (rec._ts !== _lastFBts) {
-        console.log('[FB PULL] novo ts='+rec._ts);
-        _lastFBts = rec._ts;
-        aplicarDados(rec);
-        render();
-        setSyncStatus('✓ Atualizado','var(--green)');
-        setTimeout(function(){ setSyncStatus('• Online','var(--green)'); },2000);
-      }
-    })
-    .catch(function(e){ console.warn('[FB silentSync]',e.message); });
-}
-function startRealtimeSync() {
-  // Polling SDK como backup (3s)
-  if (_pollId) clearInterval(_pollId);
-  _pollId = setInterval(_silentSync, 3000);
-  // Listener em tempo real via WebSocket (SDK) — instantâneo
-  _dbRef.off(); // limpar listeners anteriores
-  _dbRef.on('value', function(snap) {
-    var rec = snap.val();
-    if (!rec || !rec._ts) return;
-    if (rec._ts !== _lastFBts && !_pushInProgress) {
-      console.log('[FB LIVE] ts='+rec._ts);
-      _lastFBts = rec._ts;
-      aplicarDados(rec);
-      render();
-      setSyncStatus('✓ Ao vivo','var(--green)');
-      setTimeout(function(){ setSyncStatus('• Online','var(--green)'); },2000);
-    }
-  }, function(err) {
-    console.warn('[FB listener erro]', err.message);
-  });
-}
-
-
 // ── DIAGNÓSTICO FIREBASE ────────────────────────────────────────
 function diagFB(){
-  notify('⟳ Testando Firebase SDK...','info');
+  notify('⟳ Testando Firebase SDK... (sincronização v'+SYNC_VERSAO+')','info');
   _dbRef.once('value')
     .then(function(snap){
       var d=snap.val();
@@ -2918,7 +3257,7 @@ async function loadEmpresaMesUniversal(tipo,empresa){
     return loadEmpresaMes(tipo,empresa);
   }
   try{
-    const snap=await _db.ref('srcapas/'+empresa).once('value');
+    const snap=await _db.ref(_RAIZ+'/'+empresa).once('value');
     const rec=snap.val()||{};
     const chave=`srcapas_${tipo}_${empresa}_${ST.ano}_${String(ST.mes).padStart(2,'0')}`;
     return rec[chave]||[];
@@ -3146,8 +3485,9 @@ function doLogout() {
 
 // Push antes de fechar a aba (garante que dado não se perca)
 window.addEventListener('beforeunload', function() {
-  if (_syncTimer) { clearTimeout(_syncTimer); pushToFB(); }
+  if (_pendentes().length) { pushToFB(); }
 });
+if(_RAIZ!=='srcapas'){const f=document.createElement('div');f.textContent='AMBIENTE DE TESTE — nada aqui vai para os dados reais';f.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:2000;background:#b45309;color:#fff;font:700 12px sans-serif;text-align:center;padding:5px';document.body.appendChild(f);}
 checkAuth();
 </script>
 </body>
