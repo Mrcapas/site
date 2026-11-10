@@ -5,7 +5,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SR. CAPAS — Gestão Financeira</title>
+<title>MR. CAPAS — Gestão Financeira</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -157,8 +157,7 @@ body.dark-mode .mkBg-high{background:#052010!important}
 <div id="app">
   <aside class="sidebar">
     <div class="sb-logo">
-      <div class="sb-logo-eye">Grupo Família Guerra</div>
-      <div class="sb-logo-name">SR. CAPAS</div>
+      <div class="sb-logo-name">MR. CAPAS</div>
       <div class="sb-logo-sub" id="sb-empresa">Gestão Financeira</div>
     </div>
     <div style="padding:10px 10px 4px">
@@ -168,12 +167,9 @@ body.dark-mode .mkBg-high{background:#052010!important}
 <option value="araruama_mall">Araruama (OpenMall)</option>
       </select>
     </div>
-    <div class="sb-section">Visão Geral</div>
-    <button class="sb-item active" data-tab="dashboard" onclick="setTab('dashboard',this)">📊 Dashboard</button>
     <div class="sb-section">Lançamentos</div>
-    <button class="sb-item" data-tab="entradas" onclick="setTab('entradas',this)">📈 Entradas</button>
+    <button class="sb-item active" data-tab="entradas" onclick="setTab('entradas',this)">📈 Entradas</button>
     <button class="sb-item" data-tab="saidas" onclick="setTab('saidas',this)">📉 Saídas</button>
-    <div class="sb-section">Parceiros</div>
     <button class="sb-item" data-tab="financeiras" onclick="setTab('financeiras',this)">💳 Financeiras</button>
     <div class="sb-section">Gestão</div>
     <button class="sb-item" data-tab="verificacao" onclick="setTab('verificacao',this)">📋 Verificação Mensal</button>
@@ -191,7 +187,7 @@ body.dark-mode .mkBg-high{background:#052010!important}
   </aside>
   <main class="main">
     <div class="topbar">
-      <div class="tb-title" id="tb-title">Dashboard</div>
+      <div class="tb-title" id="tb-title">Entradas</div>
       <div class="tb-period">
         <select id="sel-mes" class="tb-sel" onchange="changePeriod()"></select>
         <select id="sel-ano" class="tb-sel" onchange="changePeriod()"></select>
@@ -224,8 +220,7 @@ body.dark-mode .mkBg-high{background:#052010!important}
 
 <div id="login-screen" style="display:none">
   <div style="width:340px;background:var(--bg-card);border:1px solid var(--border);border-top:3px solid var(--gold);border-radius:12px;padding:40px 32px 32px">
-    <div style="font-family:'Syne',sans-serif;font-size:9px;font-weight:700;letter-spacing:.22em;color:var(--gold);text-transform:uppercase;margin-bottom:6px">Grupo Família Guerra</div>
-    <div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;margin-bottom:4px">SR. CAPAS</div>
+    <div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;margin-bottom:4px">MR. CAPAS</div>
     <div style="font-size:13px;color:var(--muted);margin-bottom:28px">Sistema de Gestão Financeira</div>
     <div class="fl" style="margin-bottom:12px"><label>Usuário</label><input class="fi" type="text" id="l-user" placeholder="usuário" autocomplete="username"></div>
     <div class="fl" style="margin-bottom:18px"><label>Senha</label><input class="fi" type="password" id="l-pass" placeholder="••••••••" autocomplete="current-password"></div>
@@ -247,7 +242,7 @@ const CAT_SAIDA_COMPRAS=['Compra Mercadoria','Frete'];
 const CAT_SAIDA_DESPESAS=CAT_SAIDA.filter(c=>!CAT_SAIDA_COMPRAS.includes(c));
 const FORMAS=['PIX','Dinheiro','Cartão','Boleto','Débito Automático'];
 const NOW=new Date();
-const ST={tab:'dashboard',empresa:'bacaxa',mes:NOW.getMonth()+1,ano:NOW.getFullYear()};
+const ST={tab:'entradas',empresa:'bacaxa',mes:NOW.getMonth()+1,ano:NOW.getFullYear()};
 const BRL=new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'});
 const fmt=n=>BRL.format(n??0);
 const pct=(n,b)=>!b||b===0?'—':(n/b*100).toFixed(1)+'%';
@@ -806,7 +801,7 @@ function changePeriod(){
 
 
 // TAB
-const TITLES={bancaria:'Gestão Bancária',dashboard:'Dashboard',entradas:'Entradas',saidas:'Saídas',financeiras:'Financeiras',verificacao:'Verificação Mensal',markup:'Markup',dre:'DRE — Resultado do Exercício',estoque:'Controle de Estoque',lucro5:'5% do Lucro'};
+const TITLES={bancaria:'Gestão Bancária',entradas:'Entradas',saidas:'Saídas',financeiras:'Financeiras',verificacao:'Verificação Mensal',markup:'Markup',dre:'DRE — Resultado do Exercício',estoque:'Controle de Estoque',lucro5:'5% do Lucro'};
 function setTab(tab,btn){
   ST.tab=tab;
   document.querySelectorAll('.sb-item').forEach(b=>b.classList.remove('active'));
@@ -817,7 +812,7 @@ function render(){
   const t=document.getElementById('tb-title');
   t.textContent=TITLES[ST.tab]||'';t.dataset.orig=t.textContent;
   document.getElementById('content').innerHTML='';
-  ({dashboard:renderDash,entradas:renderEntradas,saidas:renderSaidas,financeiras:renderFin,verificacao:renderVerif,markup:renderMarkup,dre:renderDRE,bancaria:renderBancaria,estoque:renderEstoque,lucro5:renderLucro5}[ST.tab]||function(){})();
+  ({entradas:renderEntradas,saidas:renderSaidas,financeiras:renderFin,verificacao:renderVerif,markup:renderMarkup,dre:renderDRE,bancaria:renderBancaria,estoque:renderEstoque,lucro5:renderLucro5}[ST.tab]||function(){})();
 }
 
 // CALCS
@@ -871,42 +866,6 @@ function calcTotais(){
   return{fat,taxas:taxas+finTaxas,rl,compras,cmvEntradas,cmvTotal,despOp,erros,perdas,
     finVendas,finTaxas,finRecebido,finAReceber,
     din,pix,cart,getnet,rend,cred,lb,ebitda,res,en,sa,fi};
-}
-
-// DASHBOARD
-function renderDash(){
-  const t=calcTotais();
-  const c=document.getElementById('content');
-  let h=`<div class="kpi-grid">
-    <div class="kpi"><div class="kpi-accent" style="background:var(--gold)"></div><div class="kpi-label">Faturamento Bruto</div><div class="kpi-value gold">${fmt(t.fat)}</div><div class="kpi-sub">Taxas: ${fmt(t.taxas)}</div></div>
-    <div class="kpi"><div class="kpi-accent" style="background:var(--blue)"></div><div class="kpi-label">Receita Líquida</div><div class="kpi-value">${fmt(t.rl)}</div><div class="kpi-sub">Após deduções</div></div>
-    <div class="kpi"><div class="kpi-accent" style="background:var(--red)"></div><div class="kpi-label">CMV Total</div><div class="kpi-value neg">${fmt(t.cmvTotal)}</div><div class="kpi-sub">Compras + CMV do dia</div></div>
-    <div class="kpi"><div class="kpi-accent" style="background:var(--red)"></div><div class="kpi-label">Despesas Operacionais</div><div class="kpi-value neg">${fmt(t.despOp)}</div><div class="kpi-sub">Excl. compras e CMV</div></div>
-    <div class="kpi"><div class="kpi-accent" style="background:${t.res>=0?'var(--green)':'var(--red)'}"></div><div class="kpi-label">Resultado do Mês</div><div class="kpi-value ${t.res>=0?'pos':'neg'}">${fmt(t.res)}</div><div class="kpi-sub">${pct(t.res,t.rl)} da receita líq.</div></div>
-    <div class="kpi"><div class="kpi-accent" style="background:var(--amber)"></div><div class="kpi-label">Financeiras a Receber</div><div class="kpi-value" style="color:var(--amber)">${fmt(t.finAReceber)}</div><div class="kpi-sub">Recebido: ${fmt(t.finRecebido)}</div></div>
-  </div>`;
-
-  if(t.en.length){
-    const mx=Math.max(...t.en.map(r=>(+r.din||0)+(+r.pix||0)+(+r.cart||0)));
-    const bars=t.en.map(r=>{
-      const tot=(+r.din||0)+(+r.pix||0)+(+r.cart||0);
-      const h2=mx>0?Math.round(tot/mx*100):2;
-      const d=new Date(r.data+'T12:00:00');
-      return `<div class="bar-col"><div class="bar-el" style="height:${h2}px" title="${fmt(tot)}"></div><div class="bar-d">${d.getDate()}</div></div>`;
-    }).join('');
-    h+=`<div class="chart-block"><div class="chart-lbl">Entradas por dia — ${MESES[ST.mes-1]} ${ST.ano}</div><div class="bar-wrap">${bars}</div></div>`;
-  }
-
-  const byCat={};
-  t.sa.forEach(r=>{byCat[r.cat]=(byCat[r.cat]||0)+(+r.val||0)});
-  if(Object.keys(byCat).length){
-    const rows=Object.entries(byCat).sort((a,b)=>b[1]-a[1]).map(([cat,val])=>`<tr><td>${cat}</td><td class="neg">${fmt(val)}</td><td class="dim">${pct(val,t.despOp+t.compras)}</td></tr>`).join('');
-    h+=`<div class="sec-hdr"><h2>Resumo de Saídas</h2><div class="sec-line"></div></div>
-    <div class="tbl-wrap"><table><tr><th>Categoria</th><th>Total</th><th>% do Total</th></tr>${rows}</table></div>`;
-  } else {
-    h+=`<div class="empty"><div style="font-size:32px">🎤</div><div>Sem lançamentos neste período.<br>Clique no botão dourado e fale para começar!</div></div>`;
-  }
-  c.innerHTML=h;
 }
 
 // ENTRADAS
@@ -1284,7 +1243,7 @@ function renderFin(){
   <div class="tbl-wrap"><table>
     <tr><th><input type="checkbox" onchange="toggleAllFin(this)" title="Selecionar todos" style="width:14px;height:14px;accent-color:var(--gold)"></th><th>Data Venda</th><th>Valor Venda</th><th>Data Prev.</th><th>Taxa</th><th>Recebido</th><th>Dia Receb.</th><th style="text-align:right">Ação</th></tr>
     ${tRows}
-    <tr class="tfoot"><td>TOTAL</td><td>${fmt(tVv)}</td><td>—</td><td class="neg">${fmt(tTx)}</td><td class="pos">${fmt(tVr)}</td><td colspan="2"></td></tr>
+    <tr class="tfoot"><td></td><td>TOTAL</td><td>${fmt(tVv)}</td><td></td><td class="neg">${fmt(tTx)}</td><td class="pos">${fmt(tVr)}</td><td></td><td></td></tr>
   </table></div>
   <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:4px">
     <div class="kpi"><div class="kpi-label">Total Vendido</div><div class="kpi-value">${fmt(tVv)}</div></div>
@@ -1460,7 +1419,8 @@ function getVerif(){
   // Migrar dados antigos: se global tem sal/adi/vale e mensal está vazio, migrar
   funsGlobal.forEach(f=>{
     if(!funMes[f.id] && (f.sal||f.adi||f.vale||f.bonificacao)){
-      funMes[f.id]={sal:f.sal||0,adi:f.adi||0,vale:f.vale||0,bonificacao:f.bonificacao||0,st:f.st||'PENDENTE'};
+      // Mês novo nunca começa como pago e sem adiantamento: status e adiantamento do mês anterior (gravados no cadastro global) não são copiados.
+      funMes[f.id]={sal:f.sal||0,adi:0,vale:f.vale||0,bonificacao:f.bonificacao||0,st:'PENDENTE'};
     }
   });
   // Mesclar: base global + dados do mês
@@ -2120,7 +2080,7 @@ function renderDRE(){
   const card=(html,title)=>`<div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--bg-card)">${html}</div>`;
 
   const h=`
-  <div style="font-size:10px;letter-spacing:.15em;color:var(--gold);margin-bottom:4px;text-transform:uppercase">SR. CAPAS · Bacaxá / Saquarema</div>
+  <div style="font-size:10px;letter-spacing:.15em;color:var(--gold);margin-bottom:4px;text-transform:uppercase">MR. CAPAS · Bacaxá / Saquarema</div>
   <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;margin-bottom:16px">Balancete Mensal — ${MESES[ST.mes-1]} ${ST.ano}</div>
 
   <!-- FATURAMENTO | BANCOS | SAÍDAS -->

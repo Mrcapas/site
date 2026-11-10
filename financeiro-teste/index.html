@@ -1419,8 +1419,8 @@ function getVerif(){
   // Migrar dados antigos: se global tem sal/adi/vale e mensal está vazio, migrar
   funsGlobal.forEach(f=>{
     if(!funMes[f.id] && (f.sal||f.adi||f.vale||f.bonificacao)){
-      // Mês novo nunca começa como pago: o status do mês anterior (que fica gravado no cadastro global) não é copiado.
-      funMes[f.id]={sal:f.sal||0,adi:f.adi||0,vale:f.vale||0,bonificacao:f.bonificacao||0,st:'PENDENTE'};
+      // Mês novo nunca começa como pago e sem adiantamento: status e adiantamento do mês anterior (gravados no cadastro global) não são copiados.
+      funMes[f.id]={sal:f.sal||0,adi:0,vale:f.vale||0,bonificacao:f.bonificacao||0,st:'PENDENTE'};
     }
   });
   // Mesclar: base global + dados do mês
