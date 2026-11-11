@@ -197,6 +197,7 @@ body.dark-mode .mkBg-high{background:#052010!important}
       <button class="btn-ghost" onclick="syncManual()" style="border-color:var(--gold-dim);color:var(--gold)" title="Sincronizar dados com a nuvem">☁ Sync</button>
       <button class="btn-ghost" onclick="diagFB()" style="font-size:10px;border-color:var(--border);color:var(--muted)" title="Testar conexão Firebase">🔧 Diagnóstico</button>
       <span id="sync-status" style="font-size:11px;color:var(--muted);min-width:100px;text-align:right"></span>
+      <button class="btn-ghost" onclick="doLogout()" title="Sair da conta">↩ Sair</button>
     </div>
     <div class="content" id="content"></div>
   </main>
@@ -223,8 +224,8 @@ body.dark-mode .mkBg-high{background:#052010!important}
   <div style="width:340px;background:var(--bg-card);border:1px solid var(--border);border-top:3px solid var(--gold);border-radius:12px;padding:40px 32px 32px">
     <div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;margin-bottom:4px">MR. CAPAS</div>
     <div style="font-size:13px;color:var(--muted);margin-bottom:28px">Sistema de Gestão Financeira</div>
-    <div class="fl" style="margin-bottom:12px"><label>Usuário</label><input class="fi" type="text" id="l-user" placeholder="usuário" autocomplete="username"></div>
-    <div class="fl" style="margin-bottom:18px"><label>Senha</label><input class="fi" type="password" id="l-pass" placeholder="••••••••" autocomplete="current-password"></div>
+    <div class="fl" style="margin-bottom:12px"><label>Usuário</label><input class="fi" type="text" id="l-user" placeholder="usuário" autocomplete="username" onkeydown="enterNext(event,'l-pass')"></div>
+    <div class="fl" style="margin-bottom:18px"><label>Senha</label><input class="fi" type="password" id="l-pass" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter'){event.preventDefault();doLogin()}"></div>
     <div id="l-err" style="font-size:12px;color:var(--red);margin-bottom:10px;display:none">Usuário ou senha incorretos.</div>
     <button class="btn-gold" style="width:100%" onclick="doLogin()">Entrar</button>
   </div>
