@@ -82,6 +82,7 @@ T('T5', 'sem internet ao abrir', async (browser, ok) => {
   const srv = new Servidor(); srv.raiz = base();
   const A = await abrirCliente(browser, srv, 'A', NOVO); await espera(600);
   const local0 = {}; local0[PFX + KE] = JSON.stringify(srv.get('srcapas/bacaxa/' + KE));
+  local0[PFX + 'mrc_perfil:U'] = JSON.stringify({ nome: 'Teste', perfil: 'admin' }); // aparelho que já entrou antes
   const B = await abrirCliente(browser, srv, 'B', NOVO, { offline: true, localInicial: local0 });
   await lancar(A, 'online1'); await espera(8600);
   const status = await B.ev(() => document.getElementById('sync-status').textContent);
@@ -127,18 +128,21 @@ T('T8', 'dados deixados no navegador pela versão antiga', async (browser, ok) =
   await A.fechar();
 });
 
-T('T12', 'teste e oficial no mesmo navegador', async (browser, ok) => {
-  const srv = new Servidor(); srv.raiz = base();
-  const P = await abrirCliente(browser, srv, 'P', NOVO); await espera(700);
-  const Tt = await abrirCliente(browser, srv, 'T', NOVO, { ctx: P.ctx, url: 'https://www.mrcapas.com.br/financeiro-teste/' }); await espera(900);
-  const vazio = ((await Tt.local(KE)) || []).length;
+T('T12', 'teste e oficial no mesmo navegador (projetos Firebase separados)', async (browser, ok) => {
+  const srvP = new Servidor(); srvP.raiz = base();
+  const srvT = new Servidor(); srvT.raiz = base();
+  const P = await abrirCliente(browser, srvP, 'P', NOVO); await espera(700);
+  const Tt = await abrirCliente(browser, srvT, 'T', NOVO, { ctx: P.ctx, url: 'https://www.mrcapas.com.br/financeiro-teste/' }); await espera(900);
   await lancar(Tt, 'FALSO1'); await Tt.ev(() => changeEmpresa('araruama')); await espera(700);
   await lancar(Tt, 'FALSO3'); await espera(800);
   await P.page.reload({ waitUntil: 'load' }); await espera(1200);
   await P.ev(() => changeEmpresa('araruama')); await espera(900);
   await lancar(P, 'realNovo'); await espera(900);
-  const real = JSON.stringify(srv.get('srcapas')), teste = JSON.stringify(srv.get('srcapas_teste') || {});
-  ok('não se misturam', (await Tt.ev(() => _RAIZ)) === 'srcapas_teste' && vazio === 0 && !real.includes('FALSO') && real.includes('realNovo') && teste.includes('FALSO1') && teste.includes('FALSO3') && !teste.includes('"e1"') && !teste.includes('realNovo') && (await P.ev(() => _contarPend())) === 0);
+  const real = JSON.stringify(srvP.get('srcapas')), teste = JSON.stringify(srvT.get('srcapas'));
+  const cfgP = await P.ev(() => ({ db: _FB_CFG.databaseURL, pfx: _PFX })), cfgT = await Tt.ev(() => ({ db: _FB_CFG.databaseURL, pfx: _PFX }));
+  ok('cada endereço usa o seu projeto Firebase', cfgP.db.indexOf('finan-mrcapas-default') >= 0 && cfgT.db.indexOf('finan-mrcapas-teste') >= 0, { cfgP, cfgT });
+  ok('armazenamento do navegador separado (V2! x TESTE!)', cfgP.pfx === 'V2!' && cfgT.pfx === 'TESTE!', { cfgP, cfgT });
+  ok('não se misturam', !real.includes('FALSO') && real.includes('realNovo') && teste.includes('FALSO1') && teste.includes('FALSO3') && !teste.includes('realNovo'));
   await P.ctx.close();
 });
 
@@ -328,6 +332,71 @@ T('REAL', 'navegação completa contra cópia do banco real (opcional: BACKUP_JS
   ok('nenhuma chave some e nada muda além dos custos recorrentes gerados', sumiram.length === 0 && mudaram.length === 0, { sumiram, mudaram });
   ok('sem pendências, sem resgate, sem erros', (await A.ev(() => _contarPend())) === 0 && !srv.raiz.srcapas_resgate && semRede(A).length === 0, { erros: semRede(A).slice(0, 3), resgate: Object.keys(srv.raiz.srcapas_resgate || {}) });
   await A.fechar();
+});
+
+const comConta = (srv, usuario, uid, pw) => { srv.contas[usuario + '@mrcapas.local'] = { pw, uid }; };
+const telas = c => c.ev(() => ({ login: getComputedStyle(document.getElementById('login-screen')).display, app: getComputedStyle(document.getElementById('app')).display, msg: document.getElementById('l-err').textContent }));
+const entrar = async (c, u, p) => { await c.ev(([u, p]) => { document.getElementById('l-user').value = u; document.getElementById('l-pass').value = p; doLogin(); }, [u, p]); await espera(700); };
+
+T('R11', 'login real: sem senha no código; só entra quem está cadastrado', async (browser, ok) => {
+  ok('o arquivo não tem senha nem lista de usuários escrita', !/CREDS/.test(NOVO) && !/srcapas_auth/.test(NOVO));
+  const srv = new Servidor(); srv.raiz = base();
+  srv.raiz.usuarios = { ADM: { nome: 'Admin', perfil: 'admin' }, TEC: { nome: 'Emerson', perfil: 'tecnico' } };
+  comConta(srv, 'admin', 'ADM', 'certa'); comConta(srv, 'emerson', 'TEC', 'tec1'); comConta(srv, 'novo', 'NOVO', 'n1');
+  const A = await abrirCliente(browser, srv, 'A', NOVO, { semLogin: true, semUsuario: true }); await espera(800);
+  let t = await telas(A);
+  ok('sem login: só a tela de login aparece', t.login !== 'none' && t.app === 'none', t);
+  ok('sem login: nenhum dado das lojas é lido', !srv.leituras.some(p => p.indexOf('srcapas') === 0), srv.leituras);
+  await entrar(A, 'Admin', 'errada'); t = await telas(A);
+  ok('senha errada: mostra o erro e continua fora', t.app === 'none' && /incorretos/.test(t.msg), t);
+  await entrar(A, 'emerson', 'tec1'); t = await telas(A);
+  ok('perfil técnico não entra no sistema principal', t.app === 'none' && /não tem acesso/.test(t.msg) && (await A.ev(() => window.__fbSaiu)) >= 1, t);
+  await entrar(A, 'novo', 'n1'); t = await telas(A);
+  ok('conta sem cadastro de permissão não entra', t.app === 'none' && /sem permissão/.test(t.msg), t);
+  ok('nada de lojas foi lido por quem não entrou', !srv.leituras.some(p => p.indexOf('srcapas') === 0), srv.leituras);
+  await entrar(A, 'Admin', 'certa'); await espera(600); t = await telas(A);
+  const u = await A.ev(() => window._USER);
+  ok('admin com a senha certa entra', t.app !== 'none' && t.login === 'none' && u && u.perfil === 'admin', { t, u });
+  ok('depois de entrar a loja é lida', srv.leituras.some(p => p.indexOf('srcapas/') === 0));
+  await A.fechar();
+});
+
+T('R12', 'perfil "completo" só enxerga as lojas liberadas', async (browser, ok) => {
+  const srv = new Servidor(); srv.raiz = base();
+  const C = await abrirCliente(browser, srv, 'C', NOVO, { uid: 'C1', perfil: { nome: 'Paiva', perfil: 'completo', lojas: { araruama: true } } }); await espera(1200);
+  const e = await C.ev(() => ({ emp: ST.empresa, bloqueadas: Array.from(document.querySelectorAll('#empresa-sel option')).filter(o => o.disabled).map(o => o.value) }));
+  ok('abre na loja liberada e esconde as outras', e.emp === 'araruama' && e.bloqueadas.indexOf('bacaxa') >= 0 && e.bloqueadas.indexOf('araruama') < 0, e);
+  await lancar(C, 'p1'); await espera(900);
+  ok('não lê nem grava em loja não liberada', !srv.leituras.some(p => p.indexOf('srcapas/bacaxa') === 0) && !srv.log.some(l => l.p.indexOf('srcapas/bacaxa') === 0), { leituras: srv.leituras, log: srv.log.map(l => l.p) });
+  ok('o lançamento da loja liberada chega ao servidor', JSON.stringify(srv.get('srcapas/araruama')).includes('p1'));
+  await C.fechar();
+});
+
+T('R13', 'sair: envia o pendente e volta para a tela de login', async (browser, ok) => {
+  const srv = new Servidor(); srv.raiz = base();
+  const A = await abrirCliente(browser, srv, 'A', NOVO); await espera(1000);
+  await lancar(A, 'antesDeSair'); await A.ev(() => doLogout()); await espera(2000);
+  const t = await telas(A);
+  ok('volta para o login depois de sair', t.login !== 'none' && t.app === 'none', t);
+  ok('o que foi lançado antes de sair está no servidor', JSON.stringify(srv.get('srcapas/bacaxa')).includes('antesDeSair'));
+  await A.fechar();
+});
+
+T('R14', 'sem internet: aparelho que já entrou abre; o primeiro acesso exige internet', async (browser, ok) => {
+  const srv = new Servidor(); srv.raiz = base();
+  const A = await abrirCliente(browser, srv, 'A', NOVO, { offline: true, localInicial: { [PFX + 'mrc_perfil:U']: JSON.stringify({ nome: 'Teste', perfil: 'admin' }) } }); await espera(4000);
+  let t = await telas(A);
+  ok('com o perfil guardado, abre mesmo sem internet', t.app !== 'none' && t.login === 'none', t);
+  A.conectar(); await espera(1500);
+  ok('ao voltar a internet, o perfil guardado é confirmado e continua dentro', (await telas(A)).app !== 'none' && JSON.parse(await A.ev(() => localStorage.getItem('mrc_perfil:U'))).perfil === 'admin');
+  srv.raiz.usuarios.U = { nome: 'Teste', perfil: 'tecnico' }; // acesso revogado no servidor
+  await A.page.reload({ waitUntil: 'load' }); await espera(1800); t = await telas(A);
+  ok('acesso revogado no servidor: não entra mais', t.app === 'none' && /não tem acesso/.test(t.msg), t);
+  await A.fechar();
+  const B = await abrirCliente(browser, srv, 'B', NOVO, { offline: true, uid: 'SEM_CACHE', semUsuario: true }); await espera(4000);
+  t = await telas(B);
+  ok('primeiro acesso sem internet: não entra', t.app === 'none', t);
+  await B.fechar();
 });
 
 (async () => {

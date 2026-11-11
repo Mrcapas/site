@@ -148,6 +148,7 @@ body.dark-mode .mkBg-high{background:#052010!important}
 </style>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 </head>
 <body>
 <div id="notif"></div>
@@ -230,11 +231,6 @@ body.dark-mode .mkBg-high{background:#052010!important}
 </div>
 
 <script>
-const CREDS={u:'Guerra',p:'Resiliencia2023@'};
-const CREDS_EXTRA=[
-  {u:'TERRA',p:'110205',nome:'Terra'},
-  {u:'PAIVA',p:'913700',nome:'Paiva'},
-];
 const MESES=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 const PARCEIROS=['UME','Payjoy','Moeda Social','Brasilcard','Parcelex','Crefaz'];
 const CAT_SAIDA=['Despesa Operacional','Verificação Escritório','Compra Mercadoria','Frete','Marketing','Tributo','Pessoal','Erro de Caixa','Perda','Estorno','Outro'];
@@ -258,16 +254,24 @@ function loadO(t){try{return JSON.parse(localStorage.getItem(sk(t))||'{}')}catch
 function saveO(t,d){localStorage.setItem(sk(t),JSON.stringify(d));flashSaved();pushToFB();}
 
 // ── FIREBASE REALTIME DATABASE ─────────────────────────────
-const _FB_URL = 'https://finan-mrcapas-default-rtdb.firebaseio.com';
-firebase.initializeApp({
+// Cada endereço usa o seu próprio projeto Firebase: /financeiro/ = produção; /financeiro-teste/ = projeto finan-mrcapas-teste.
+const _EH_TESTE = location.pathname.indexOf('financeiro-teste') >= 0;
+const _FB_CFG = _EH_TESTE ? {
+  apiKey:'AIzaSyAGAla_xE1417YxqjP6NWddxhtrp3REFgU',
+  authDomain:'finan-mrcapas-teste.firebaseapp.com',
+  databaseURL:'https://finan-mrcapas-teste-default-rtdb.firebaseio.com',
+  projectId:'finan-mrcapas-teste'
+} : {
   apiKey:'AIzaSyAsTJTkvOdMAnAhhMc6taoqviqI6pXyEvg',
+  authDomain:'finan-mrcapas.firebaseapp.com',
   databaseURL:'https://finan-mrcapas-default-rtdb.firebaseio.com',
   projectId:'finan-mrcapas'
-});
+};
+const _FB_URL = _FB_CFG.databaseURL;
+firebase.initializeApp(_FB_CFG);
 const _db=firebase.database();
 window._db=_db;
-// Endereço de teste (/financeiro-teste/) usa uma área separada do banco: dá para testar sem tocar nos dados reais.
-const _RAIZ = location.pathname.indexOf('financeiro-teste') >= 0 ? 'srcapas_teste' : 'srcapas';
+const _RAIZ = 'srcapas';
 window._dbRef=_db.ref(_RAIZ+'/bacaxa');
 let _syncTimer = null;
 
@@ -423,7 +427,7 @@ function _mergeLista(b, l, r){
 
 // ── Armazenamento do navegador, com prefixo próprio desta versão ──
 const _lsGetRaw = Storage.prototype.getItem, _lsSetRaw = Storage.prototype.setItem, _lsRemRaw = Storage.prototype.removeItem;
-const _PFX = _RAIZ === 'srcapas' ? 'V2!' : 'TESTE!';
+const _PFX = _EH_TESTE ? 'TESTE!' : 'V2!';
 function _ehDado(k){ return typeof k === 'string' && k.indexOf('srcapas_') === 0 && k !== 'srcapas_theme'; }
 function _kk(st, k){ return (st === window.localStorage && typeof k === 'string' && (_ehDado(k) || k.indexOf('mrc_') === 0)) ? _PFX + k : k; }
 function _get(k){ return _lsGetRaw.call(localStorage, _PFX + k); }
@@ -541,7 +545,7 @@ function _enviarQuarentena(){
 // Uma vez por loja e por navegador: o que a versão antiga deixou guardado aqui e o
 // servidor não tem vai para o resgate. Os dados antigos não são alterados nem usados.
 function _conferirNavegadorAntigo(loja, rec){
-  if (_RAIZ !== 'srcapas' || _get('mrc_m:' + loja) !== null) return;
+  if (_EH_TESTE || _get('mrc_m:' + loja) !== null) return;
   let total = 0, falhou = false;
   const antigas = [];
   for (let i = 0; i < localStorage.length; i++) { const rk = localStorage.key(i); if (rk && rk.indexOf('srcapas_') === 0 && _lojaDaChave(rk) === loja) antigas.push(rk); }
@@ -3404,42 +3408,117 @@ function flashSaved() {
   notify('✓ Salvo', 'ok');
 }
 
-// ── AUTENTICAÇÃO ───────────────────────────────────────────────
-function checkAuth() {
-  const ok = sessionStorage.getItem('srcapas_auth');
-  if (ok) {
-    document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('app').style.display = '';
-    initApp();
-  } else {
-    document.getElementById('app').style.display = 'none';
-    document.getElementById('login-screen').style.display = 'flex';
+// ── AUTENTICAÇÃO (Firebase Authentication) ─────────────────────
+// Usuário e senha são conferidos pelo Firebase: nenhuma senha fica escrita neste arquivo.
+// A pessoa digita só o nome (ex.: "admin"); a página completa com o domínio interno abaixo.
+// As permissões de cada usuário ficam em /usuarios/<uid> no banco (perfil e lojas liberadas).
+const _DOMINIO_LOGIN = '@mrcapas.local';
+window._USER = null;
+let _appIniciado = false;
+function _emailDoUsuario(u) { return String(u || '').trim().toLowerCase().replace(/\s+/g, '') + _DOMINIO_LOGIN; }
+function _msgLogin(txt) {
+  const err = document.getElementById('l-err');
+  if (!err) return;
+  if (txt) { err.textContent = txt; err.style.display = 'block'; } else { err.style.display = 'none'; }
+}
+function _mostrarLogin(txt) {
+  _appIniciado = false; window._USER = null;
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+  const p = document.getElementById('l-pass'); if (p) p.value = '';
+  _msgLogin(txt || '');
+}
+function _lojasDoUsuario(perfil) {
+  const todas = Array.from(document.querySelectorAll('#empresa-sel option')).map(function(o){ return o.value; }).filter(Boolean);
+  if (perfil.perfil === 'admin') return todas;
+  const m = perfil.lojas || {};
+  return todas.filter(function(l){ return m[l] === true; });
+}
+function _entrarNoApp(user, perfil) {
+  if (_appIniciado) return;
+  const lojas = _lojasDoUsuario(perfil);
+  if (!lojas.length) { firebase.auth().signOut(); _mostrarLogin('Este usuário não tem nenhuma loja liberada.'); return; }
+  _appIniciado = true;
+  window._USER = { uid: user.uid, nome: perfil.nome || '', perfil: perfil.perfil };
+  const sel = document.getElementById('empresa-sel');
+  document.querySelectorAll('#empresa-sel option').forEach(function(o){
+    if (o.value && lojas.indexOf(o.value) < 0) { o.hidden = true; o.disabled = true; }
+  });
+  if (lojas.indexOf(ST.empresa) < 0) {
+    ST.empresa = lojas[0];
+    if (sel) sel.value = ST.empresa;
+    window._dbRef = _db.ref(_RAIZ + '/' + ST.empresa);
   }
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').style.display = '';
+  _msgLogin('');
+  initApp();
+}
+function _aoMudarUsuario(user) {
+  if (!user) { _mostrarLogin(''); return; }
+  // O perfil fica guardado neste aparelho depois do primeiro login: sem internet o sistema abre com ele
+  // (como já abre com os dados guardados). Quando o servidor responde, o perfil guardado é atualizado ou revogado.
+  // Isto só decide o que aparece na tela; quem protege os dados são as regras do banco.
+  const ck = 'mrc_perfil:' + user.uid;
+  let cache = null;
+  try { cache = JSON.parse(localStorage.getItem(ck) || 'null'); } catch (e) {}
+  let entrou = false, respondeu = false;
+  const negar = function(msg) {
+    try { localStorage.removeItem(ck); } catch (e) {}
+    const fim = function() { if (entrou) location.reload(); else _mostrarLogin(msg); };
+    try { firebase.auth().signOut().then(fim, fim); } catch (e) { fim(); }
+  };
+  const avaliar = function(perfil, doServidor) {
+    if (!perfil) { negar('Usuário sem permissão cadastrada. Fale com o administrador.'); return; }
+    if (perfil.perfil !== 'admin' && perfil.perfil !== 'completo') { negar('Este usuário não tem acesso a esta página.'); return; }
+    if (doServidor) { try { localStorage.setItem(ck, JSON.stringify(perfil)); } catch (e) {} }
+    if (!entrou) { entrou = true; _entrarNoApp(user, perfil); }
+  };
+  const espera = cache ? setTimeout(function() { if (!respondeu) avaliar(cache, false); }, 2500) : null;
+  _db.ref('usuarios/' + user.uid).once('value').then(function(snap) {
+    respondeu = true; if (espera) clearTimeout(espera);
+    avaliar(snap.val(), true);
+  }).catch(function(e) {
+    respondeu = true; if (espera) clearTimeout(espera);
+    const negado = /permission/i.test(String((e && (e.code || e.message)) || ''));
+    if (cache && !negado) { avaliar(cache, false); return; }
+    negar('Não foi possível verificar o acesso: ' + ((e && e.message) ? e.message : 'erro'));
+  });
+}
+function checkAuth() {
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+  try { firebase.auth().setPersistence(firebase.auth.Auth.Persistence.SESSION); } catch (e) {}
+  firebase.auth().onAuthStateChanged(_aoMudarUsuario);
 }
 function doLogin() {
   const u = document.getElementById('l-user').value.trim();
   const p = document.getElementById('l-pass').value;
-  const err = document.getElementById('l-err');
-  const adminOk = u === CREDS.u && p === CREDS.p;
-  const extraOk = CREDS_EXTRA.find(c => c.u === u && c.p === p);
-  if (adminOk || extraOk) {
-    sessionStorage.setItem('srcapas_auth', u);
-    document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('app').style.display = '';
-    err.style.display = 'none';
-    initApp();
-  } else {
-    err.style.display = 'block';
-    document.getElementById('l-pass').value = '';
-  }
+  if (!u || !p) { _msgLogin('Digite o usuário e a senha.'); return; }
+  _msgLogin('');
+  const btn = document.querySelector('#login-screen .btn-gold');
+  if (btn) btn.disabled = true;
+  firebase.auth().signInWithEmailAndPassword(_emailDoUsuario(u), p)
+    .catch(function(e) {
+      const c = (e && e.code) || '';
+      let m = 'Usuário ou senha incorretos.';
+      if (c === 'auth/too-many-requests') m = 'Muitas tentativas. Aguarde alguns minutos e tente de novo.';
+      else if (c === 'auth/network-request-failed') m = 'Sem conexão com a internet.';
+      else if (c === 'auth/user-disabled') m = 'Este usuário está desativado.';
+      document.getElementById('l-pass').value = '';
+      _msgLogin(m);
+    })
+    .then(function() { if (btn) btn.disabled = false; });
 }
 function doLogout() {
-  sessionStorage.removeItem('srcapas_auth');
-  document.getElementById('app').style.display = 'none';
-  document.getElementById('login-screen').style.display = 'flex';
-  document.getElementById('l-user').value = '';
-  document.getElementById('l-pass').value = '';
-  document.getElementById('l-err').style.display = 'none';
+  // envia o que estiver pendente antes de sair; depois recarrega a página (limpa o estado da pessoa anterior)
+  const sair = function() {
+    let feito = false;
+    const fim = function() { if (feito) return; feito = true; location.reload(); };
+    try { firebase.auth().signOut().then(fim, fim); } catch (e) { fim(); }
+    setTimeout(fim, 3000);
+  };
+  try { Promise.resolve(pushToFB()).then(sair, sair); } catch (e) { sair(); }
 }
 
 
@@ -3447,7 +3526,7 @@ function doLogout() {
 window.addEventListener('beforeunload', function() {
   if (_pendentes().length) { pushToFB(); }
 });
-if(_RAIZ!=='srcapas'){const f=document.createElement('div');f.textContent='AMBIENTE DE TESTE — nada aqui vai para os dados reais';f.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:2000;background:#b45309;color:#fff;font:700 12px sans-serif;text-align:center;padding:5px';document.body.appendChild(f);}
+if(_EH_TESTE){const f=document.createElement('div');f.textContent='AMBIENTE DE TESTE — projeto separado, nada aqui vai para os dados reais';f.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:2000;background:#b45309;color:#fff;font:700 12px sans-serif;text-align:center;padding:5px';document.body.appendChild(f);}
 checkAuth();
 </script>
 </body>

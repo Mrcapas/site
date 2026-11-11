@@ -1,0 +1,29 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "usuarios": {
+      ".read": "auth != null && root.child('usuarios').child(auth.uid).child('perfil').val() === 'admin'",
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && root.child('usuarios').child(auth.uid).child('perfil').val() === 'admin'"
+      }
+    },
+    "srcapas": {
+      "$loja": {
+        ".read": "auth != null && (root.child('usuarios').child(auth.uid).child('perfil').val() === 'admin' || (root.child('usuarios').child(auth.uid).child('perfil').val() === 'completo' && root.child('usuarios').child(auth.uid).child('lojas').child($loja).val() === true))",
+        ".write": "auth != null && (root.child('usuarios').child(auth.uid).child('perfil').val() === 'admin' || (root.child('usuarios').child(auth.uid).child('perfil').val() === 'completo' && root.child('usuarios').child(auth.uid).child('lojas').child($loja).val() === true))"
+      }
+    },
+    "srcapas_resgate": {
+      "$loja": {
+        ".read": "auth != null && (root.child('usuarios').child(auth.uid).child('perfil').val() === 'admin' || (root.child('usuarios').child(auth.uid).child('perfil').val() === 'completo' && root.child('usuarios').child(auth.uid).child('lojas').child($loja).val() === true))",
+        ".write": "auth != null && (root.child('usuarios').child(auth.uid).child('perfil').val() === 'admin' || (root.child('usuarios').child(auth.uid).child('perfil').val() === 'completo' && root.child('usuarios').child(auth.uid).child('lojas').child($loja).val() === true))"
+      }
+    },
+    "_diag_test": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    }
+  }
+}

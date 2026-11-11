@@ -14,7 +14,7 @@ const canon = v => { const c = limpo(v); return c === undefined ? '' : JSON.stri
 const clone = v => (v === undefined ? null : JSON.parse(JSON.stringify(v)));
 
 class Servidor {
-  constructor() { this.raiz = {}; this.clientes = []; this.escritas = 0; this.log = []; }
+  constructor() { this.raiz = {}; this.clientes = []; this.escritas = 0; this.log = []; this.leituras = []; this.contas = {}; }
   partes(p) { return p.split('/').filter(Boolean); }
   get(p) { let n = this.raiz; for (const k of this.partes(p)) { if (n === null || typeof n !== 'object') return null; n = n[k]; if (n === undefined) return null; } return clone(n); }
   set(p, v, quem) {
@@ -50,7 +50,8 @@ async function abrirCliente(browser, srv, nome, html, opts = {}) {
   srv.clientes.push(c);
   page.on('pageerror', e => c.erros.push(String(e)));
   page.on('console', m => { if (m.type() === 'error') c.erros.push(m.text()); });
-  await page.exposeFunction('__fb_get', async p => { await quandoOnline(); return srv.get(p); });
+  await page.exposeFunction('__fb_get', async p => { await quandoOnline(); srv.leituras.push(p); return srv.get(p); });
+  await page.exposeFunction('__fb_login', async (email, pw) => { const c = srv.contas[email]; return c && c.pw === pw ? c.uid : null; });
   await page.exposeFunction('__fb_set', async (p, v) => { await quandoOnline(); srv.set(p, v, nome); return true; });
   await page.exposeFunction('__fb_cas', async (p, esperado, v) => {
     await quandoOnline();
@@ -58,16 +59,23 @@ async function abrirCliente(browser, srv, nome, html, opts = {}) {
     if (canon(atual) !== esperado) return { ok: false, val: atual };
     srv.set(p, v, nome); return { ok: true, val: srv.get(p) };
   });
-  await page.exposeFunction('__fb_listen', p => { if (p === '.info/connected') { setTimeout(c.info, 10); return true; } c.ouvindo.add(p); c.entregar(p, c.atrasoInicial); return true; });
+  await page.exposeFunction('__fb_listen', p => { srv.leituras.push(p); if (p === '.info/connected') { setTimeout(c.info, 10); return true; } c.ouvindo.add(p); c.entregar(p, c.atrasoInicial); return true; });
   await page.exposeFunction('__fb_unlisten', p => { c.ouvindo.delete(p); return true; });
   await page.route('**/*', route => {
     const u = route.request().url();
     if (u.includes('firebase-app-compat')) return route.fulfill({ contentType: 'application/javascript', body: FAKE });
     if (u.includes('firebase-database-compat')) return route.fulfill({ contentType: 'application/javascript', body: '/* fake */' });
+    if (u.includes('firebase-auth-compat')) return route.fulfill({ contentType: 'application/javascript', body: '/* fake */' });
     if (route.request().resourceType() === 'document' && u.startsWith('https://www.mrcapas.com.br/')) return route.fulfill({ contentType: 'text/html; charset=utf-8', body: html });
     return route.abort();
   });
-  await page.addInitScript(() => { try { sessionStorage.setItem('srcapas_auth', 'teste'); } catch (e) {} });
+  const uid = opts.uid || 'U';
+  if (!opts.semUsuario) { srv.raiz.usuarios = srv.raiz.usuarios || {}; if (!srv.raiz.usuarios[uid]) srv.raiz.usuarios[uid] = opts.perfil || { nome: 'Teste', perfil: 'admin' }; }
+  // versão antiga: login por senha escrita (sessionStorage); versão nova: usuário já logado na autenticação simulada.
+  await page.addInitScript(([semLogin, uid]) => { try {
+    sessionStorage.setItem('srcapas_auth', 'teste');
+    if (!sessionStorage.getItem('__fbSeed')) { sessionStorage.setItem('__fbSeed', '1'); if (!semLogin) sessionStorage.setItem('__fbUser', JSON.stringify({ uid: uid })); }
+  } catch (e) {} }, [!!opts.semLogin, uid]);
   if (opts.localInicial) await page.addInitScript(dados => {
     if (localStorage.getItem('__semeado')) return;
     Object.keys(dados).forEach(k => localStorage.setItem(k, dados[k])); localStorage.setItem('__semeado', '1');

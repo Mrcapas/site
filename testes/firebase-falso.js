@@ -34,5 +34,22 @@
     return primeiro.then(function (v) { return tentar(v, 0); });
   };
   var db = { ref: function (p) { return new Ref(p || ''); }, setPersistenceEnabled: function () { throw new Error('n/a'); } };
-  window.firebase = { initializeApp: function () { }, database: function () { return db; } };
+  // Autenticação simulada: o usuário logado fica no sessionStorage (como a persistência SESSION do SDK real).
+  var authCbs = [];
+  function getU() { try { return JSON.parse(sessionStorage.getItem('__fbUser') || 'null'); } catch (e) { return null; } }
+  function setU(u) { try { if (u) sessionStorage.setItem('__fbUser', JSON.stringify(u)); else sessionStorage.removeItem('__fbUser'); } catch (e) {} }
+  var auth = {
+    get currentUser() { return getU(); },
+    onAuthStateChanged: function (cb) { authCbs.push(cb); setTimeout(function () { cb(getU()); }, 5); return function () { }; },
+    signInWithEmailAndPassword: function (email, pw) {
+      return window.__fb_login(email, pw).then(function (uid) {
+        if (!uid) { var e = new Error('credencial'); e.code = 'auth/invalid-credential'; throw e; }
+        var u = { uid: uid, email: email }; setU(u); authCbs.forEach(function (cb) { cb(u); }); return { user: u };
+      });
+    },
+    signOut: function () { window.__fbSaiu = (window.__fbSaiu || 0) + 1; setU(null); authCbs.forEach(function (cb) { cb(null); }); return Promise.resolve(); },
+    setPersistence: function () { return Promise.resolve(); }
+  };
+  window.firebase = { initializeApp: function (cfg) { window.__fbCfg = cfg; }, database: function () { return db; }, auth: function () { return auth; } };
+  window.firebase.auth.Auth = { Persistence: { SESSION: 'session', LOCAL: 'local', NONE: 'none' } };
 })();
