@@ -179,6 +179,8 @@ body.dark-mode .mkBg-high{background:#052010!important}
 <button class="sb-item" data-tab="bancaria" onclick="setTab('bancaria',this)">🏦 Gestão Bancária</button>
 <button class="sb-item" data-tab="estoque" onclick="setTab('estoque',this)">📦 Controle de Estoque</button>
 <button class="sb-item" data-tab="lucro5" onclick="setTab('lucro5',this)">⭐ 5% do Lucro</button>
+    <div class="sb-section">Administração</div>
+    <button class="sb-item" data-tab="acessos" onclick="setTab('acessos',this)" style="display:none">🔑 Acessos</button>
     <div class="sb-bottom">
 
       <button id="theme-btn" onclick="toggleTheme()" style="width:100%;margin:0 0 6px;display:flex;align-items:center;gap:8px;padding:9px 14px;background:transparent;border:1px solid var(--border);border-radius:7px;cursor:pointer;font-size:12px;color:var(--muted);font-family:inherit;transition:all .2s">🌙 Modo Escuro</button>
@@ -806,8 +808,9 @@ function changePeriod(){
 
 
 // TAB
-const TITLES={bancaria:'Gestão Bancária',entradas:'Entradas',saidas:'Saídas',financeiras:'Financeiras',verificacao:'Verificação Mensal',markup:'Markup',dre:'DRE — Resultado do Exercício',estoque:'Controle de Estoque',lucro5:'5% do Lucro'};
+const TITLES={bancaria:'Gestão Bancária',entradas:'Entradas',saidas:'Saídas',financeiras:'Financeiras',verificacao:'Verificação Mensal',markup:'Markup',dre:'DRE — Resultado do Exercício',estoque:'Controle de Estoque',lucro5:'5% do Lucro',acessos:'Acessos'};
 function setTab(tab,btn){
+  if(_nivelAba(tab)==='nada')return;
   ST.tab=tab;
   document.querySelectorAll('.sb-item').forEach(b=>b.classList.remove('active'));
   if(btn)btn.classList.add('active');
@@ -817,7 +820,8 @@ function render(){
   const t=document.getElementById('tb-title');
   t.textContent=TITLES[ST.tab]||'';t.dataset.orig=t.textContent;
   document.getElementById('content').innerHTML='';
-  ({entradas:renderEntradas,saidas:renderSaidas,financeiras:renderFin,verificacao:renderVerif,markup:renderMarkup,dre:renderDRE,bancaria:renderBancaria,estoque:renderEstoque,lucro5:renderLucro5}[ST.tab]||function(){})();
+  ({entradas:renderEntradas,saidas:renderSaidas,financeiras:renderFin,verificacao:renderVerif,markup:renderMarkup,dre:renderDRE,bancaria:renderBancaria,estoque:renderEstoque,lucro5:renderLucro5,acessos:renderAcessos}[ST.tab]||function(){})();
+  if(ST.tab!=='acessos'&&_nivelAba(ST.tab)==='ver')_somenteLeitura();
 }
 
 // CALCS
@@ -3440,7 +3444,8 @@ function _entrarNoApp(user, perfil) {
   const lojas = _lojasDoUsuario(perfil);
   if (!lojas.length) { firebase.auth().signOut(); _mostrarLogin('Este usuário não tem nenhuma loja liberada.'); return; }
   _appIniciado = true;
-  window._USER = { uid: user.uid, nome: perfil.nome || '', perfil: perfil.perfil };
+  window._USER = { uid: user.uid, nome: perfil.nome || '', perfil: perfil.perfil, abas: perfil.abas || null };
+  _aplicarPermissoes();
   const sel = document.getElementById('empresa-sel');
   document.querySelectorAll('#empresa-sel option').forEach(function(o){
     if (o.value && lojas.indexOf(o.value) < 0) { o.hidden = true; o.disabled = true; }
@@ -3511,6 +3516,147 @@ function doLogin() {
     })
     .then(function() { if (btn) btn.disabled = false; });
 }
+// ── ACESSOS (só administrador) ──────────────────────────────────────────────
+// O que cada pessoa vê e edita fica em usuarios/<uid>: { nome, perfil, lojas:{loja:true}, abas:{aba:'ver'|'editar'} }.
+// Esconder abas aqui na tela é só conveniência; quem protege os dados são as regras do banco.
+const _ABAS = {entradas:'Entradas',saidas:'Saídas',financeiras:'Financeiras',verificacao:'Verificação Mensal',markup:'Markup',dre:'DRE',bancaria:'Gestão Bancária',estoque:'Controle de Estoque',lucro5:'5% do Lucro'};
+const _LOJAS_NOMES = {bacaxa:'Bacaxá / Saquarema',araruama:'Araruama (Centro)',araruama_mall:'Araruama (OpenMall)'};
+let _acUsuarios = {};
+function _escA(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function _nivelAbaDe(u, tab) {
+  if (!u) return 'nada';
+  if (u.perfil === 'admin') return 'editar';
+  if (!u.abas) return 'editar'; // cadastro antigo sem abas definidas: libera tudo (como era)
+  return u.abas[tab] === 'editar' ? 'editar' : (u.abas[tab] === 'ver' ? 'ver' : 'nada');
+}
+function _nivelAba(tab) { return tab === 'acessos' ? (window._USER && window._USER.perfil === 'admin' ? 'editar' : 'nada') : _nivelAbaDe(window._USER, tab); }
+function _aplicarPermissoes() {
+  document.querySelectorAll('.sb-item[data-tab]').forEach(function(b) {
+    b.style.display = _nivelAba(b.dataset.tab) === 'nada' ? 'none' : '';
+  });
+  if (_nivelAba(ST.tab) === 'nada') {
+    const prim = Object.keys(_ABAS).filter(function(t){ return _nivelAba(t) !== 'nada'; })[0] || 'entradas';
+    ST.tab = prim;
+  }
+  document.querySelectorAll('.sb-item').forEach(function(b){ b.classList.toggle('active', b.dataset.tab === ST.tab); });
+}
+function _somenteLeitura() {
+  const c = document.getElementById('content'); if (!c) return;
+  c.querySelectorAll('button,input,select,textarea').forEach(function(e){ e.disabled = true; });
+  c.insertAdjacentHTML('afterbegin', '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:8px 14px;margin-bottom:14px;font-size:12px;color:var(--muted)">👁 Somente leitura — você pode ver esta aba, mas não alterar.</div>');
+}
+function _blocoPerm(p, u) {
+  u = u || {};
+  const lojas = Object.keys(_LOJAS_NOMES).map(function(l) {
+    return '<label style="display:flex;align-items:center;gap:6px;font-size:12px"><input type="checkbox" id="'+p+'-l-'+l+'"'+((u.lojas && u.lojas[l]) ? ' checked' : '')+'> '+_escA(_LOJAS_NOMES[l])+'</label>';
+  }).join('');
+  const abas = Object.keys(_ABAS).map(function(t) {
+    const v = (u.abas && u.abas[t]) || 'nada';
+    return '<div class="fl"><label>'+_escA(_ABAS[t])+'</label><select class="fi" id="'+p+'-a-'+t+'">'
+      + ['nada','ver','editar'].map(function(o){ return '<option value="'+o+'"'+(v===o?' selected':'')+'>'+({nada:'Não aparece',ver:'Só ver',editar:'Ver e editar'})[o]+'</option>'; }).join('')
+      + '</select></div>';
+  }).join('');
+  return '<div id="'+p+'-perm"><div style="margin:10px 0 6px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Lojas</div><div style="display:flex;gap:18px;flex-wrap:wrap">'+lojas+'</div>'
+    + '<div style="margin:12px 0 6px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Abas</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px">'+abas+'</div></div>';
+}
+function _acTogglePerm(p) {
+  const s = document.getElementById(p + '-perfil'), d = document.getElementById(p + '-perm');
+  if (s && d) d.style.display = s.value === 'completo' ? '' : 'none';
+}
+function _acMsg(t, erro) {
+  const m = document.getElementById('ac-msg'); if (!m) return;
+  m.textContent = t || ''; m.style.display = t ? 'block' : 'none'; m.style.color = erro ? '#C0392B' : '#1E8449';
+}
+function _acLer(p) {
+  const perfil = document.getElementById(p + '-perfil').value;
+  const nome = document.getElementById(p + '-nome').value.trim();
+  const reg = { nome: nome, perfil: perfil };
+  if (perfil === 'completo') {
+    const lojas = {}, abas = {};
+    Object.keys(_LOJAS_NOMES).forEach(function(l){ if (document.getElementById(p+'-l-'+l).checked) lojas[l] = true; });
+    Object.keys(_ABAS).forEach(function(t){ const v = document.getElementById(p+'-a-'+t).value; if (v !== 'nada') abas[t] = v; });
+    if (!Object.keys(lojas).length) return { erro: 'Marque ao menos uma loja.' };
+    if (!Object.keys(abas).length) return { erro: 'Libere ao menos uma aba.' };
+    reg.lojas = lojas; reg.abas = abas;
+  }
+  return { reg: reg };
+}
+function renderAcessos() {
+  const c = document.getElementById('content');
+  if (!window._USER || window._USER.perfil !== 'admin') { c.innerHTML = '<div class="empty">Somente o administrador acessa esta página.</div>'; return; }
+  c.innerHTML = '<div class="empty">⏳ <div>Carregando usuários…</div></div>';
+  _db.ref('usuarios').once('value').then(function(snap) {
+    _acUsuarios = snap.val() || {}; _desenharAcessos();
+  }).catch(function(e) {
+    c.innerHTML = '<div class="empty">Não foi possível carregar os usuários: ' + _escA(e && e.message) + '</div>';
+  });
+}
+function _perfilOpts(sel) {
+  return [['completo','Acesso por lojas e abas'],['tecnico','Técnico (página própria — em breve)'],['admin','Administrador (acesso total)']]
+    .map(function(o){ return '<option value="'+o[0]+'"'+(sel===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('');
+}
+function _desenharAcessos() {
+  const c = document.getElementById('content');
+  let h = '<div id="ac-msg" style="display:none;margin-bottom:12px;font-size:13px;font-weight:600"></div>';
+  h += '<div class="form-card"><div class="sec-hdr"><h2>Novo usuário</h2><div class="sec-line"></div></div>'
+    + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">'
+    + '<div class="fl"><label>Usuário (para entrar)</label><input class="fi" id="ac-n-user" autocomplete="off" placeholder="ex: guerra"></div>'
+    + '<div class="fl"><label>Nome de exibição</label><input class="fi" id="ac-n-nome" autocomplete="off" placeholder="ex: Guerra"></div>'
+    + '<div class="fl"><label>Senha (mín. 8 caracteres)</label><input class="fi" type="password" id="ac-n-senha" autocomplete="new-password"></div>'
+    + '<div class="fl"><label>Perfil</label><select class="fi" id="ac-n-perfil" onchange="_acTogglePerm(\'ac-n\')">' + _perfilOpts('completo') + '</select></div></div>'
+    + _blocoPerm('ac-n') + '<div style="margin-top:14px"><button class="btn-gold" onclick="acCriar()">Criar usuário</button></div></div>';
+  h += '<div class="sec-hdr"><h2>Usuários</h2><div class="sec-line"></div></div>';
+  Object.keys(_acUsuarios).sort(function(a, b){ return String(_acUsuarios[a].nome||'').localeCompare(String(_acUsuarios[b].nome||'')); }).forEach(function(uid, i) {
+    const u = _acUsuarios[uid] || {}, eu = uid === window._USER.uid, p = 'ac-u' + i;
+    h += '<div class="form-card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px"><strong>'+_escA(u.nome || '(sem nome)')+(eu?' <span style="font-size:11px;color:var(--muted)">(você)</span>':'')+'</strong><span style="font-size:10px;color:var(--dim)">'+_escA(uid)+'</span></div>'
+      + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">'
+      + '<div class="fl"><label>Nome de exibição</label><input class="fi" id="'+p+'-nome" value="'+_escA(u.nome||'')+'"></div>'
+      + '<div class="fl"><label>Perfil</label><select class="fi" id="'+p+'-perfil" onchange="_acTogglePerm(\''+p+'\')"'+(eu?' disabled':'')+'>'+_perfilOpts(u.perfil)+'</select></div></div>'
+      + _blocoPerm(p, u)
+      + '<div style="margin-top:14px;display:flex;gap:10px"><button class="btn-gold" onclick="acSalvar(\''+_escA(uid)+'\',\''+p+'\')">Salvar</button>'
+      + (eu ? '' : '<button class="btn-ghost" id="'+p+'-rm" onclick="acRemover(\''+_escA(uid)+'\',\''+p+'\')">Remover acesso</button>') + '</div></div>';
+  });
+  c.innerHTML = h;
+  _acTogglePerm('ac-n');
+  Object.keys(_acUsuarios).forEach(function(uid, i){ _acTogglePerm('ac-u' + i); });
+}
+function acSalvar(uid, p) {
+  const sel = document.getElementById(p + '-perfil'); 
+  const r = _acLer(p); if (r.erro) { _acMsg(r.erro, true); return; }
+  if (uid === window._USER.uid) r.reg.perfil = 'admin';
+  _db.ref('usuarios/' + uid).set(r.reg).then(function(){ _acMsg('Salvo. Quem estiver logado vê a mudança no próximo login.', false); renderAcessos(); })
+    .catch(function(e){ _acMsg('Não foi possível salvar: ' + (e && e.message), true); });
+}
+function acRemover(uid, p) {
+  const b = document.getElementById(p + '-rm'); if (!b) return;
+  if (b.dataset.ok !== '1') { b.dataset.ok = '1'; b.textContent = 'Confirmar remoção'; setTimeout(function(){ if (b) { b.dataset.ok = ''; b.textContent = 'Remover acesso'; } }, 5000); return; }
+  _db.ref('usuarios/' + uid).remove().then(function(){ _acMsg('Acesso removido. A conta continua existindo no Firebase, mas não entra mais no sistema.', false); renderAcessos(); })
+    .catch(function(e){ _acMsg('Não foi possível remover: ' + (e && e.message), true); });
+}
+function acCriar() {
+  const user = document.getElementById('ac-n-user').value.trim().toLowerCase().replace(/\s+/g, '');
+  const senha = document.getElementById('ac-n-senha').value;
+  if (!/^[a-z0-9._-]{2,30}$/.test(user)) { _acMsg('Usuário: 2 a 30 letras minúsculas, números, ponto, hífen ou _ (sem acento).', true); return; }
+  if (senha.length < 8) { _acMsg('A senha precisa ter ao menos 8 caracteres.', true); return; }
+  const r = _acLer('ac-n'); if (r.erro) { _acMsg(r.erro, true); return; }
+  if (!r.reg.nome) r.reg.nome = user;
+  _acMsg('Criando…', false);
+  // A conta é criada num app Firebase separado para o administrador continuar logado aqui.
+  let sec; try { sec = firebase.app('sec'); } catch (e) { sec = firebase.initializeApp(_FB_CFG, 'sec'); }
+  try { sec.auth().setPersistence(firebase.auth.Auth.Persistence.NONE); } catch (e) {}
+  sec.auth().createUserWithEmailAndPassword(_emailDoUsuario(user), senha).then(function(cred) {
+    const uid = cred.user.uid;
+    return sec.auth().signOut().then(function(){ return _db.ref('usuarios/' + uid).set(r.reg); });
+  }).then(function(){ _acMsg('Usuário "' + user + '" criado.', false); renderAcessos(); })
+  .catch(function(e) {
+    const c = (e && e.code) || '';
+    let m = 'Não foi possível criar: ' + ((e && e.message) || 'erro');
+    if (c === 'auth/email-already-in-use') m = 'Já existe um usuário com esse nome.';
+    else if (c === 'auth/weak-password') m = 'Senha fraca demais. Use ao menos 8 caracteres.';
+    _acMsg(m, true);
+  });
+}
+
 function doLogout() {
   // envia o que estiver pendente antes de sair; depois recarrega a página (limpa o estado da pessoa anterior)
   const sair = function() {
