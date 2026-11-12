@@ -404,7 +404,7 @@ T('R16', 'manutenção: 50% do lucro, semana sáb→sex, pagar semana cria a Sa�
   const r = await A.ev(async () => {
     const hoje = new Date(); ST.ano = hoje.getFullYear(); ST.mes = hoje.getMonth() + 1; ST.tab = 'manutencao'; render();
     const dt = today();
-    document.getElementById('m-dt').value = dt; document.getElementById('m-cli').value = 'Fulano'; document.getElementById('m-srv').value = 'troca de tela';
+    document.getElementById('m-ent').value = dt; document.getElementById('m-dt').value = dt; document.getElementById('m-cli').value = 'Fulano'; document.getElementById('m-srv').value = 'troca de tela';
     document.getElementById('m-val').value = '300'; document.getElementById('m-peca').value = '100'; addManut();
     const sx = manutSexta(dt); const antes = { n: load('manut').length, pago: !!_manutPago(sx) };
     pagarSemanaManut(sx, 100, 0);
@@ -428,7 +428,7 @@ T('R17', 'página do técnico: lança por loja, vê total da semana, não altera
   ok('técnico entra e só vê as lojas dele', a.app === 'block' && JSON.stringify(a.lojas) === JSON.stringify(['bacaxa', 'araruama']), a);
   const r = await T.ev(async () => {
     const dt = hojeISO(); const sx = sexta(dt);
-    const pre = (l) => { document.getElementById('f-loja').value = l; document.getElementById('f-data').value = dt; document.getElementById('f-cli').value = 'Maria Silva'; document.getElementById('f-srv').value = 'troca de tela'; document.getElementById('f-val').value = '300'; document.getElementById('f-peca').value = '100'; };
+    const pre = (l) => { document.getElementById('f-loja').value = l; document.getElementById('f-ent').value = dt; document.getElementById('f-data').value = dt; document.getElementById('f-cli').value = 'Maria Silva'; document.getElementById('f-srv').value = 'troca de tela'; document.getElementById('f-val').value = '300'; document.getElementById('f-peca').value = '100'; };
     pre('bacaxa'); adicionar(); await new Promise(r => setTimeout(r, 700));
     pre('araruama'); adicionar(); await new Promise(r => setTimeout(r, 700));
     return { total: document.getElementById('k-total').textContent.replace(/\s/g, ' '), qtd: document.getElementById('k-qtd').textContent, linhas: document.querySelectorAll('#lista tr').length, sx };
@@ -440,7 +440,7 @@ T('R17', 'página do técnico: lança por loja, vê total da semana, não altera
   const d = new Date(), mm = d.getFullYear() + '_' + String(d.getMonth() + 1).padStart(2, '0');
   const sx = r.sx, mp = sx.slice(0, 4) + '_' + sx.slice(5, 7);
   srv.set('srcapas/bacaxa/srcapas_manutpag_bacaxa_' + mp, [{ id: 'p1', sexta: sx, valor: 100, pagoEm: sx }], 'admin');
-  const b = await T.ev(async () => { await carregar(); const n0 = DADOS.length; document.getElementById('f-loja').value = 'bacaxa'; document.getElementById('f-data').value = hojeISO(); document.getElementById('f-cli').value = 'X'; document.getElementById('f-srv').value = 'y'; document.getElementById('f-val').value = '50'; adicionar(); await new Promise(r => setTimeout(r, 500)); await carregar(); return { n0, n1: DADOS.length, pago: document.getElementById('lista').innerText.includes('pago'), msg: document.getElementById('msg').textContent }; });
+  const b = await T.ev(async () => { await carregar(); const n0 = DADOS.length; document.getElementById('f-loja').value = 'bacaxa'; document.getElementById('f-ent').value = hojeISO(); document.getElementById('f-data').value = hojeISO(); document.getElementById('f-cli').value = 'X'; document.getElementById('f-srv').value = 'y'; document.getElementById('f-val').value = '50'; adicionar(); await new Promise(r => setTimeout(r, 500)); await carregar(); return { n0, n1: DADOS.length, pago: document.getElementById('lista').innerText.includes('pago'), msg: document.getElementById('msg').textContent }; });
   ok('semana já paga: não aceita novo serviço e mostra "pago"', b.n0 === b.n1 && b.pago && /já foi pago/.test(b.msg), b);
   await T.fechar();
   const N = await abrirCliente(browser, srv, 'N', TEC, { uid: 'C9', perfil: { nome: 'Paiva', perfil: 'completo', lojas: { bacaxa: true } }, url: 'https://www.mrcapas.com.br/tecnico-teste/' }); await espera(1200);

@@ -70,6 +70,7 @@ td{padding:8px;border-bottom:1px solid var(--border);vertical-align:top}
   <div class="card">
     <h2>Novo serviço</h2>
     <div class="grid">
+      <div><label>Data de entrada</label><input type="date" id="f-ent"></div>
       <div><label>Data de conclusão</label><input type="date" id="f-data"></div>
       <div><label>Loja</label><select id="f-loja"></select></div>
       <div><label>Cliente</label><input id="f-cli" autocomplete="off"></div>
@@ -88,7 +89,7 @@ td{padding:8px;border-bottom:1px solid var(--border);vertical-align:top}
       <h2 style="margin:0">Serviços do mês</h2>
       <div style="display:flex;gap:8px"><select id="s-mes" onchange="carregar()"></select><select id="s-ano" onchange="carregar()"></select></div>
     </div>
-    <div class="tw"><table><thead><tr><th>Data</th><th>Loja</th><th>Cliente</th><th>Aparelho</th><th>Serviço</th><th class="r">Valor</th><th class="r">Peça</th><th class="r">Seu valor</th><th>Acerto</th><th></th></tr></thead><tbody id="lista"></tbody></table></div>
+    <div class="tw"><table><thead><tr><th>Entrada</th><th>Conclusão</th><th>Loja</th><th>Cliente</th><th>Aparelho</th><th>Serviço</th><th class="r">Valor</th><th class="r">Peça</th><th class="r">Seu valor</th><th>Acerto</th><th></th></tr></thead><tbody id="lista"></tbody></table></div>
   </div>
 
   <div class="card">
@@ -153,8 +154,10 @@ function transacao(loja, dataISO, fn){
   });
 }
 function adicionar(){
-  const r = { id: uuid(), data: $('f-data').value, loja: $('f-loja').value, cliente: $('f-cli').value.trim(), aparelho: $('f-apa').value.trim(), servico: $('f-srv').value.trim(), valor: +$('f-val').value, forma: $('f-forma').value, peca: +$('f-peca').value || 0, obs: $('f-obs').value.trim(), por: EU.nome || '' };
-  if (!r.data) return aviso('Informe a data.', true);
+  const r = { id: uuid(), entrada: $('f-ent').value, data: $('f-data').value, loja: $('f-loja').value, cliente: $('f-cli').value.trim(), aparelho: $('f-apa').value.trim(), servico: $('f-srv').value.trim(), valor: +$('f-val').value, forma: $('f-forma').value, peca: +$('f-peca').value || 0, obs: $('f-obs').value.trim(), por: EU.nome || '' };
+  if (!r.entrada) return aviso('Informe a data de entrada.', true);
+  if (!r.data) return aviso('Informe a data de conclusão.', true);
+  if (r.entrada > r.data) return aviso('A data de entrada não pode ser depois da conclusão.', true);
   if (!r.cliente || !r.servico) return aviso('Informe o cliente e o serviço realizado.', true);
   if (!(r.valor > 0)) return aviso('Informe o valor pago pelo cliente.', true);
   if (r.peca > r.valor) return aviso('O custo da peça não pode ser maior que o valor do serviço.', true);
@@ -162,7 +165,7 @@ function adicionar(){
   $('f-btn').disabled = true;
   const loja = r.loja; delete r.loja;
   transacao(loja, r.data, function(a){ a.push(r); a.sort(function(x, y){ return String(x.data).localeCompare(String(y.data)); }); return a; })
-    .then(function(){ ['f-cli','f-apa','f-srv','f-val','f-peca','f-obs'].forEach(function(i){ $(i).value = ''; }); aviso('Serviço registrado.'); return carregar(); })
+    .then(function(){ ['f-cli','f-apa','f-srv','f-val','f-peca','f-obs'].forEach(function(i){ $(i).value = ''; }); $('f-ent').value = hojeISO(); $('f-data').value = hojeISO(); aviso('Serviço registrado.'); return carregar(); })
     .catch(function(e){ aviso('Não foi possível registrar: ' + (e && e.message), true); })
     .then(function(){ $('f-btn').disabled = false; $('f-cli').focus(); });
 }
@@ -179,8 +182,8 @@ function desenhar(){
   const doMes = DADOS.filter(function(r){ return String(r.data).slice(0, 7) === pre; }).sort(function(a, b){ return String(b.data).localeCompare(String(a.data)); });
   $('lista').innerHTML = doMes.length ? doMes.map(function(r){
     const pg = PAGOS[r.loja + '|' + sexta(r.data)];
-    return '<tr><td>' + dmy(r.data) + '</td><td>' + esc(LOJAS[r.loja] || r.loja) + '</td><td>' + esc(r.cliente) + '</td><td>' + esc(r.aparelho) + '</td><td>' + esc(r.servico) + (r.obs ? '<div style="font-size:11px;color:var(--muted)">' + esc(r.obs) + '</div>' : '') + '</td><td class="r">' + fmt(r.valor) + '</td><td class="r">' + fmt(r.peca) + '</td><td class="r"><b>' + fmt(tecnico(r)) + '</b></td><td>' + dmy(sexta(r.data)) + '</td><td>' + (pg ? '<span class="pago">✓ pago</span>' : '<button class="x" title="Remover" onclick="remover(\'' + esc(r.id) + '\',\'' + r.loja + '\',\'' + r.data + '\')">×</button>') + '</td></tr>';
-  }).join('') : '<tr><td colspan="10" style="color:var(--muted);text-align:center;padding:20px">Nenhum serviço neste mês.</td></tr>';
+    return '<tr><td>' + (r.entrada ? dmy(r.entrada) : '—') + '</td><td>' + dmy(r.data) + '</td><td>' + esc(LOJAS[r.loja] || r.loja) + '</td><td>' + esc(r.cliente) + '</td><td>' + esc(r.aparelho) + '</td><td>' + esc(r.servico) + (r.obs ? '<div style="font-size:11px;color:var(--muted)">' + esc(r.obs) + '</div>' : '') + '</td><td class="r">' + fmt(r.valor) + '</td><td class="r">' + fmt(r.peca) + '</td><td class="r"><b>' + fmt(tecnico(r)) + '</b></td><td>' + dmy(sexta(r.data)) + '</td><td>' + (pg ? '<span class="pago">✓ pago</span>' : '<button class="x" title="Remover" onclick="remover(\'' + esc(r.id) + '\',\'' + r.loja + '\',\'' + r.data + '\')">×</button>') + '</td></tr>';
+  }).join('') : '<tr><td colspan="11" style="color:var(--muted);text-align:center;padding:20px">Nenhum serviço neste mês.</td></tr>';
   // semanas (todas as que aparecem nos dados carregados)
   const sem = {};
   DADOS.forEach(function(r){ const s = sexta(r.data), k = s + '|' + r.loja; (sem[k] = sem[k] || { s: s, loja: r.loja, n: 0, tot: 0 }); sem[k].n++; sem[k].tot += tecnico(r); });
@@ -217,7 +220,7 @@ function iniciar(perfil){
   $('quem').textContent = perfil.nome ? '— ' + perfil.nome : '';
   $('f-loja').innerHTML = MINHAS.map(function(l){ return '<option value="' + l + '">' + esc(LOJAS[l]) + '</option>'; }).join('');
   $('f-forma').innerHTML = FORMAS.map(function(f){ return '<option>' + f + '</option>'; }).join('');
-  $('f-data').value = hojeISO();
+  $('f-data').value = hojeISO(); $('f-ent').value = hojeISO();
   const h = new Date(), y = h.getFullYear();
   $('s-mes').innerHTML = MESES.map(function(m, i){ return '<option value="' + (i+1) + '"' + (i === h.getMonth() ? ' selected' : '') + '>' + m + '</option>'; }).join('');
   $('s-ano').innerHTML = [y-1, y, y+1].map(function(v){ return '<option' + (v === y ? ' selected' : '') + '>' + v + '</option>'; }).join('');

@@ -3714,6 +3714,7 @@ function renderManut() {
   let h = '<div style="font-size:12px;color:var(--muted);margin-bottom:14px">Controle dos serviços de manutenção desta loja. Não altera Entradas nem o DRE. O técnico recebe 50% do lucro (valor pago − custo da peça), acertado toda sexta-feira.</div>';
   h += '<div class="form-card"><div class="sec-hdr"><h2>Novo serviço</h2><div class="sec-line"></div></div>'
     + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px">'
+    + '<div class="fl"><label>Data de entrada</label><input class="fi" type="date" id="m-ent" value="' + today() + '"></div>'
     + '<div class="fl"><label>Data de conclusão</label><input class="fi" type="date" id="m-dt" value="' + today() + '"></div>'
     + '<div class="fl"><label>Cliente</label><input class="fi" id="m-cli" autocomplete="off"></div>'
     + '<div class="fl"><label>Aparelho</label><input class="fi" id="m-apa" autocomplete="off"></div>'
@@ -3724,15 +3725,15 @@ function renderManut() {
     + '<div class="fl"><label>Observações</label><input class="fi" id="m-obs" autocomplete="off" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addManut()}"></div></div>'
     + '<div style="margin-top:12px"><button class="btn-gold" onclick="addManut()">Registrar</button></div></div>';
   h += '<div class="sec-hdr"><h2>Serviços — ' + MESES[ST.mes - 1] + ' ' + ST.ano + '</h2><div class="sec-line"></div></div>';
-  h += '<div class="form-card" style="padding:0;overflow-x:auto"><table><thead><tr><th>Data</th><th>Cliente</th><th>Aparelho</th><th>Serviço</th><th>Forma</th><th style="text-align:right">Valor</th><th style="text-align:right">Peça</th><th style="text-align:right">Lucro</th><th style="text-align:right">Técnico 50%</th><th style="text-align:right">Empresa</th><th>Acerto</th><th></th></tr></thead><tbody>';
-  if (!doMes.length) h += '<tr><td colspan="12" style="text-align:center;color:var(--dim);padding:24px">Nenhum serviço neste mês.</td></tr>';
+  h += '<div class="form-card" style="padding:0;overflow-x:auto"><table><thead><tr><th>Entrada</th><th>Conclusão</th><th>Cliente</th><th>Aparelho</th><th>Serviço</th><th>Forma</th><th style="text-align:right">Valor</th><th style="text-align:right">Peça</th><th style="text-align:right">Lucro</th><th style="text-align:right">Técnico 50%</th><th style="text-align:right">Empresa</th><th>Acerto</th><th></th></tr></thead><tbody>';
+  if (!doMes.length) h += '<tr><td colspan="13" style="text-align:center;color:var(--dim);padding:24px">Nenhum serviço neste mês.</td></tr>';
   doMes.forEach(function(r) {
     const sx = manutSexta(r.data), pg = _manutPago(sx);
-    h += '<tr><td>' + _dmy(r.data) + '</td><td>' + _escA(r.cliente) + '</td><td>' + _escA(r.aparelho) + '</td><td>' + _escA(r.servico) + (r.obs ? '<div style="font-size:11px;color:var(--dim)">' + _escA(r.obs) + '</div>' : '') + '</td><td>' + _escA(r.forma) + '</td>'
+    h += '<tr><td>' + (r.entrada ? _dmy(r.entrada) : '—') + '</td><td>' + _dmy(r.data) + '</td><td>' + _escA(r.cliente) + '</td><td>' + _escA(r.aparelho) + '</td><td>' + _escA(r.servico) + (r.obs ? '<div style="font-size:11px;color:var(--dim)">' + _escA(r.obs) + '</div>' : '') + '</td><td>' + _escA(r.forma) + '</td>'
       + '<td style="text-align:right">' + fmt(r.valor) + '</td><td style="text-align:right">' + fmt(r.peca) + '</td><td style="text-align:right">' + fmt(manutLucro(r)) + '</td><td style="text-align:right"><b>' + fmt(manutTec(r)) + '</b></td><td style="text-align:right">' + fmt(manutLucro(r) - manutTec(r)) + '</td>'
       + '<td>' + _dmy(sx) + (pg ? ' <span class="badge b-ok">pago</span>' : '') + '</td><td><button class="btn-sm" onclick="delManut(\'' + _escA(r.id) + '\')">×</button></td></tr>';
   });
-  if (doMes.length) h += '<tr style="font-weight:700"><td colspan="5">TOTAL</td><td style="text-align:right">' + fmt(tot.v) + '</td><td style="text-align:right">' + fmt(tot.p) + '</td><td style="text-align:right">' + fmt(tot.l) + '</td><td style="text-align:right">' + fmt(tot.t) + '</td><td style="text-align:right">' + fmt(tot.l - tot.t) + '</td><td></td><td></td></tr>';
+  if (doMes.length) h += '<tr style="font-weight:700"><td colspan="6">TOTAL</td><td style="text-align:right">' + fmt(tot.v) + '</td><td style="text-align:right">' + fmt(tot.p) + '</td><td style="text-align:right">' + fmt(tot.l) + '</td><td style="text-align:right">' + fmt(tot.t) + '</td><td style="text-align:right">' + fmt(tot.l - tot.t) + '</td><td></td><td></td></tr>';
   h += '</tbody></table></div>';
   // acerto semanal: semanas (sextas) com serviços deste mês
   const sextas = {};
@@ -3754,8 +3755,10 @@ function renderManut() {
   c.innerHTML = h;
 }
 function addManut() {
-  const r = { id: uuid(), data: document.getElementById('m-dt').value, cliente: document.getElementById('m-cli').value.trim(), aparelho: document.getElementById('m-apa').value.trim(), servico: document.getElementById('m-srv').value.trim(), valor: +document.getElementById('m-val').value, forma: document.getElementById('m-forma').value, peca: +document.getElementById('m-peca').value || 0, obs: document.getElementById('m-obs').value.trim(), por: (window._USER && window._USER.nome) || '' };
-  if (!r.data) { notify('Informe a data', 'err'); return; }
+  const r = { id: uuid(), entrada: document.getElementById('m-ent').value, data: document.getElementById('m-dt').value, cliente: document.getElementById('m-cli').value.trim(), aparelho: document.getElementById('m-apa').value.trim(), servico: document.getElementById('m-srv').value.trim(), valor: +document.getElementById('m-val').value, forma: document.getElementById('m-forma').value, peca: +document.getElementById('m-peca').value || 0, obs: document.getElementById('m-obs').value.trim(), por: (window._USER && window._USER.nome) || '' };
+  if (!r.entrada) { notify('Informe a data de entrada', 'err'); return; }
+  if (!r.data) { notify('Informe a data de conclusão', 'err'); return; }
+  if (r.entrada > r.data) { notify('Entrada depois da conclusão', 'err'); return; }
   if (!r.cliente || !r.servico) { notify('Informe o cliente e o serviço', 'err'); return; }
   if (!(r.valor > 0)) { notify('Informe o valor pago', 'err'); return; }
   if (r.peca > r.valor) { notify('Custo da peça maior que o valor', 'err'); return; }
