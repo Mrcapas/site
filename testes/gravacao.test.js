@@ -424,6 +424,19 @@ T('R16', 'manutenção: 50% do lucro, semana sáb→sex, pagar semana cria a Sa�
   ok('pagar semana usa a data escolhida (na Saída e no pagamento)', r.pagoEm === r.dpg && r.saidaData === r.dpg, r);
   ok('alterar a data do pagamento move a Saída junto', r.mudou.pagoEm && r.mudou.saidaOnde, r);
   ok('desfazer remove o pagamento e a Saída', r.desfeito && r.saidaSumiu, r);
+  const v = await A.ev(() => {
+    const sx = '2026-11-06', y = 2026, m = 11; const ks = _kManut('saidas', ST.empresa, y, m), kp = _kManut('manutpag', ST.empresa, y, m);
+    localStorage.setItem(ks, JSON.stringify([{ id: 'velha1', data: sx, cat: 'Despesa Operacional', val: 948.75, desc: 'Pagamento técnico (lançado antes)' }]));
+    localStorage.setItem(kp, JSON.stringify([{ id: 'p0', sexta: sx, valor: 948.75, pagoEm: sx, saidaId: 'velha1' }]));
+    ST.ano = y; ST.mes = m; ST.tab = 'manutencao';
+    localStorage.setItem(_kManut('manut', ST.empresa, y, m), JSON.stringify([{ id: 's1', entrada: '2026-11-03', data: '2026-11-03', cliente: 'X', servico: 'y', valor: 300, peca: 100 }]));
+    render();
+    document.getElementById('mp-dt0').value = '2026-11-07'; alterarDataPagManut(sx, 0);
+    const dataApos = JSON.parse(localStorage.getItem(ks)).find(s => s.id === 'velha1').data;
+    const bt = document.querySelector('button[id^=mp-d]'); bt.click(); bt.click();
+    return { dataApos, saidaAindaLa: JSON.parse(localStorage.getItem(ks)).some(s => s.id === 'velha1'), pagoDesfeito: !_manutPago(sx) };
+  });
+  ok('pagamento ligado a uma Saída que já existia: mudar data ou desfazer NÃO mexe nessa Saída', v.dataApos === '2026-11-06' && v.saidaAindaLa && v.pagoDesfeito, v);
   await A.fechar();
 });
 

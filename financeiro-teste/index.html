@@ -3806,6 +3806,7 @@ function alterarDataPagManut(sexta, i) {
     const kd = _acharSaidaManut(pg);
     if (kd) {
       const sd = _lerLocal(kd), s = sd.find(function(x){ return x.id === pg.saidaId; });
+      if (!s || s.manutSexta !== sexta) { pg.pagoEm = nd; _gravarLocal(kp, lista); notify('Data do pagamento atualizada (a Saída já existente não foi alterada)', 'ok'); renderManut(); return; }
       const kn = _kManut('saidas', ST.empresa, +nd.slice(0,4), +nd.slice(5,7));
       s.data = nd;
       if (kn === kd) { sd.sort(function(a, b){ return String(a.data).localeCompare(String(b.data)); }); _gravarLocal(kd, sd); }
@@ -3820,7 +3821,7 @@ function desfazerSemanaManut(sexta, btnId) {
   if (b.dataset.ok !== '1') { b.dataset.ok = '1'; b.textContent = 'Confirmar'; setTimeout(function(){ if (b) { b.dataset.ok = ''; b.textContent = 'Desfazer'; } }, 5000); return; }
   const y = +sexta.slice(0,4), m = +sexta.slice(5,7), kp = _kManut('manutpag', ST.empresa, y, m);
   const pg = _lerLocal(kp).find(function(p){ return p.sexta === sexta; }); if (!pg) return;
-  if (pg.saidaId) { const kd = _acharSaidaManut(pg); if (kd) _gravarLocal(kd, _lerLocal(kd).filter(function(s){ return s.id !== pg.saidaId; })); }
+  if (pg.saidaId) { const kd = _acharSaidaManut(pg); if (kd) { const sx0 = _lerLocal(kd).find(function(s){ return s.id === pg.saidaId; }); if (sx0 && sx0.manutSexta === sexta) _gravarLocal(kd, _lerLocal(kd).filter(function(s){ return s.id !== pg.saidaId; })); } }
   _gravarLocal(kp, _lerLocal(kp).filter(function(p){ return p.sexta !== sexta; }));
   notify('Pagamento desfeito e Saída removida', 'ok'); renderManut();
 }
