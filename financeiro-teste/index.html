@@ -3748,8 +3748,9 @@ function renderManut() {
     const valor = Math.round(srv.reduce(function(s, r){ return s + manutTec(r); }, 0) * 100) / 100;
     const pg = _manutPago(sx);
     h += '<div class="form-card" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:space-between"><div><strong>Sexta ' + _dmy(sx) + '</strong> <span style="color:var(--muted);font-size:12px">— ' + srv.length + ' serviço(s)</span><div style="font-size:20px;font-weight:700;margin-top:2px">' + fmt(valor) + '</div></div>';
-    if (pg) h += '<div style="display:flex;align-items:center;gap:10px"><span class="badge b-ok">✓ Pago em ' + _dmy(pg.pagoEm) + '</span><button class="btn-ghost" id="mp-d' + i + '" onclick="desfazerSemanaManut(\'' + sx + '\',\'mp-d' + i + '\')">Desfazer</button></div>';
-    else h += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><select class="fi" id="mp-b' + i + '" style="width:auto">' + bancos + '</select><select class="fi" id="mp-f' + i + '" style="width:auto">' + formas + '</select><button class="btn-gold" onclick="pagarSemanaManut(\'' + sx + '\',' + valor + ',' + i + ')">Pagar semana</button></div>';
+    const padrao = sx <= today() ? sx : today();
+    if (pg) h += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="badge b-ok">✓ Pago em ' + _dmy(pg.pagoEm) + '</span><input class="fi" type="date" id="mp-dt' + i + '" value="' + _escA(pg.pagoEm || sx) + '" style="width:auto" title="Data em que foi pago"><button class="btn-ghost" onclick="alterarDataPagManut(\'' + sx + '\',' + i + ')">Salvar data</button><button class="btn-ghost" id="mp-d' + i + '" onclick="desfazerSemanaManut(\'' + sx + '\',\'mp-d' + i + '\')">Desfazer</button></div>';
+    else h += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><input class="fi" type="date" id="mp-dt' + i + '" value="' + padrao + '" style="width:auto" title="Data do pagamento"><select class="fi" id="mp-b' + i + '" style="width:auto">' + bancos + '</select><select class="fi" id="mp-f' + i + '" style="width:auto">' + formas + '</select><button class="btn-gold" onclick="pagarSemanaManut(\'' + sx + '\',' + valor + ',' + i + ')">Pagar semana</button></div>';
     h += '</div>';
   });
   c.innerHTML = h;
@@ -3778,20 +3779,48 @@ function pagarSemanaManut(sexta, valor, i) {
   if (!(valor > 0)) { notify('Semana sem valor a pagar', 'err'); return; }
   const y = +sexta.slice(0,4), m = +sexta.slice(5,7);
   const saidaId = uuid();
-  const ks = _kManut('saidas', ST.empresa, y, m), kp = _kManut('manutpag', ST.empresa, y, m);
+  const dtp = (document.getElementById('mp-dt' + i) || {}).value || sexta;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dtp)) { notify('Informe a data do pagamento', 'err'); return; }
+  const ks = _kManut('saidas', ST.empresa, +dtp.slice(0,4), +dtp.slice(5,7)), kp = _kManut('manutpag', ST.empresa, y, m);
   const sd = _lerLocal(ks);
-  sd.push({ id: saidaId, data: sexta, cat: 'Pessoal', forma: document.getElementById('mp-f' + i).value, banco: document.getElementById('mp-b' + i).value, val: valor, desc: 'Técnico — acerto semanal de manutenção (sexta ' + _dmy(sexta) + ')', manutSexta: sexta });
+  sd.push({ id: saidaId, data: dtp, cat: 'Pessoal', forma: document.getElementById('mp-f' + i).value, banco: document.getElementById('mp-b' + i).value, val: valor, desc: 'Técnico — acerto semanal de manutenção (sexta ' + _dmy(sexta) + ')', manutSexta: sexta });
   sd.sort(function(a, b){ return String(a.data).localeCompare(String(b.data)); });
   _gravarLocal(ks, sd);
-  const pg = _lerLocal(kp); pg.push({ id: uuid(), sexta: sexta, valor: valor, pagoEm: today(), saidaId: saidaId }); _gravarLocal(kp, pg);
+  const pg = _lerLocal(kp); pg.push({ id: uuid(), sexta: sexta, valor: valor, pagoEm: dtp, saidaId: saidaId }); _gravarLocal(kp, pg);
   notify('Semana paga e lançada nas Saídas!', 'ok'); renderManut();
+}
+// a Saída do pagamento fica no mês da data em que foi paga; procura nesse mês e nos vizinhos da sexta
+function _acharSaidaManut(pg) {
+  const cand = [];
+  [pg.pagoEm, pg.sexta].forEach(function(d){ if (d) for (let i = -1; i <= 1; i++) { const x = new Date(+d.slice(0,4), +d.slice(5,7) - 1 + i, 1); cand.push(_kManut('saidas', ST.empresa, x.getFullYear(), x.getMonth() + 1)); } });
+  const vistos = {};
+  for (let i = 0; i < cand.length; i++) { const k = cand[i]; if (vistos[k]) continue; vistos[k] = 1; if (_lerLocal(k).some(function(s){ return s.id === pg.saidaId; })) return k; }
+  return null;
+}
+function alterarDataPagManut(sexta, i) {
+  const nd = (document.getElementById('mp-dt' + i) || {}).value;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(nd)) { notify('Informe a data do pagamento', 'err'); return; }
+  const kp = _kManut('manutpag', ST.empresa, +sexta.slice(0,4), +sexta.slice(5,7));
+  const lista = _lerLocal(kp), pg = lista.find(function(p){ return p.sexta === sexta; }); if (!pg) return;
+  if (pg.saidaId) {
+    const kd = _acharSaidaManut(pg);
+    if (kd) {
+      const sd = _lerLocal(kd), s = sd.find(function(x){ return x.id === pg.saidaId; });
+      const kn = _kManut('saidas', ST.empresa, +nd.slice(0,4), +nd.slice(5,7));
+      s.data = nd;
+      if (kn === kd) { sd.sort(function(a, b){ return String(a.data).localeCompare(String(b.data)); }); _gravarLocal(kd, sd); }
+      else { _gravarLocal(kd, sd.filter(function(x){ return x.id !== pg.saidaId; })); const dn = _lerLocal(kn); dn.push(s); dn.sort(function(a, b){ return String(a.data).localeCompare(String(b.data)); }); _gravarLocal(kn, dn); }
+    }
+  }
+  pg.pagoEm = nd; _gravarLocal(kp, lista);
+  notify('Data do pagamento atualizada' + (pg.saidaId ? ' (e a Saída acompanha)' : ''), 'ok'); renderManut();
 }
 function desfazerSemanaManut(sexta, btnId) {
   const b = document.getElementById(btnId); if (!b) return;
   if (b.dataset.ok !== '1') { b.dataset.ok = '1'; b.textContent = 'Confirmar'; setTimeout(function(){ if (b) { b.dataset.ok = ''; b.textContent = 'Desfazer'; } }, 5000); return; }
-  const y = +sexta.slice(0,4), m = +sexta.slice(5,7), kp = _kManut('manutpag', ST.empresa, y, m), ks = _kManut('saidas', ST.empresa, y, m);
+  const y = +sexta.slice(0,4), m = +sexta.slice(5,7), kp = _kManut('manutpag', ST.empresa, y, m);
   const pg = _lerLocal(kp).find(function(p){ return p.sexta === sexta; }); if (!pg) return;
-  _gravarLocal(ks, _lerLocal(ks).filter(function(s){ return s.id !== pg.saidaId; }));
+  if (pg.saidaId) { const kd = _acharSaidaManut(pg); if (kd) _gravarLocal(kd, _lerLocal(kd).filter(function(s){ return s.id !== pg.saidaId; })); }
   _gravarLocal(kp, _lerLocal(kp).filter(function(p){ return p.sexta !== sexta; }));
   notify('Pagamento desfeito e Saída removida', 'ok'); renderManut();
 }

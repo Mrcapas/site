@@ -407,16 +407,22 @@ T('R16', 'manutenção: 50% do lucro, semana sáb→sex, pagar semana cria a Sa�
     document.getElementById('m-ent').value = dt; document.getElementById('m-dt').value = dt; document.getElementById('m-cli').value = 'Fulano'; document.getElementById('m-srv').value = 'troca de tela';
     document.getElementById('m-val').value = '300'; document.getElementById('m-peca').value = '100'; addManut();
     const sx = manutSexta(dt); const antes = { n: load('manut').length, pago: !!_manutPago(sx) };
-    pagarSemanaManut(sx, 100, 0);
-    const saida = load('saidas').filter(x => x.manutSexta === sx);
+    const dpg = (function(){ const x = new Date(); x.setDate(x.getDate() - 40); return _isoLocal(x); })();
+    document.getElementById('mp-dt0').value = dpg; pagarSemanaManut(sx, 100, 0);
+    const pagoEm = _manutPago(sx).pagoEm, todasS = _lerLocal(_kManut('saidas', ST.empresa, +dpg.slice(0,4), +dpg.slice(5,7))), saidaData = todasS.find(x => x.manutSexta === sx);
+    const saida = todasS.filter(x => x.manutSexta === sx);
     const depois = !!_manutPago(sx);
     const bloq = (function(){ const n = load('manut').length; document.getElementById('m-cli').value = 'Outro'; document.getElementById('m-srv').value = 'x'; document.getElementById('m-val').value = '50'; addManut(); return load('manut').length === n; })();
-    const bt = document.querySelector('[id^=mp-d]'); if (bt) { bt.click(); bt.click(); }
-    return { antes, saida: saida.map(x => ({ cat: x.cat, val: x.val })), depois, bloq, desfeito: !_manutPago(sx), saidaSumiu: load('saidas').filter(x => x.manutSexta === sx).length === 0 };
+    const dnov = today(); document.getElementById('mp-dt0').value = dnov; alterarDataPagManut(sx, 0);
+    const mudou = { pagoEm: _manutPago(sx).pagoEm === dnov, saidaOnde: (function(){ const k = _acharSaidaManut(_manutPago(sx)); return !!k; })() };
+    const bt = document.querySelector('button[id^=mp-d]'); if (bt) { bt.click(); bt.click(); }
+    return { dpg, pagoEm, saidaData: saidaData && saidaData.data, mudou, antes, saida: saida.map(x => ({ cat: x.cat, val: x.val })), depois, bloq, desfeito: !_manutPago(sx), saidaSumiu: [dpg, dnov].every(d => _lerLocal(_kManut('saidas', ST.empresa, +d.slice(0,4), +d.slice(5,7))).filter(x => x.manutSexta === sx).length === 0) };
   });
   ok('registrou o serviço e a semana estava pendente', r.antes.n === 1 && !r.antes.pago, r);
   ok('pagar semana cria 1 Saída "Pessoal" de R$ 100 e marca como paga', r.saida.length === 1 && r.saida[0].cat === 'Pessoal' && r.saida[0].val === 100 && r.depois, r);
   ok('semana paga não aceita novo serviço', r.bloq, r);
+  ok('pagar semana usa a data escolhida (na Saída e no pagamento)', r.pagoEm === r.dpg && r.saidaData === r.dpg, r);
+  ok('alterar a data do pagamento move a Saída junto', r.mudou.pagoEm && r.mudou.saidaOnde, r);
   ok('desfazer remove o pagamento e a Saída', r.desfeito && r.saidaSumiu, r);
   await A.fechar();
 });
