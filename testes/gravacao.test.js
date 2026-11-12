@@ -374,12 +374,14 @@ T('R12', 'perfil "completo" só enxerga as lojas liberadas', async (browser, ok)
 
 T('R15', 'permissões por aba: esconde, deixa só ler, e só o admin vê "Acessos"', async (browser, ok) => {
   const srv = new Servidor(); srv.raiz = base();
-  const C = await abrirCliente(browser, srv, 'C', NOVO, { uid: 'C1', perfil: { nome: 'Paiva', perfil: 'completo', lojas: { bacaxa: true }, abas: { entradas: 'ver', saidas: 'editar' } } }); await espera(1200);
+  const C = await abrirCliente(browser, srv, 'C', NOVO, { uid: 'C1', perfil: { nome: 'Paiva', perfil: 'completo', lojas: { bacaxa: true }, abas: { entradas: 'ver', saidas: 'editar', financeiras: 'ver' } } }); await espera(1200);
   const e = await C.ev(() => ({ tab: ST.tab, vis: Array.from(document.querySelectorAll('.sb-item[data-tab]')).filter(b => b.style.display !== 'none').map(b => b.dataset.tab), desab: document.querySelectorAll('#content input:disabled,#content button:disabled').length, aviso: document.getElementById('content').innerText.includes('Somente leitura') }));
-  ok('mostra só as abas liberadas (sem Acessos)', JSON.stringify(e.vis.sort()) === JSON.stringify(['entradas', 'saidas']), e);
+  ok('mostra só as abas liberadas (sem Acessos)', JSON.stringify(e.vis.sort()) === JSON.stringify(['entradas', 'financeiras', 'saidas']), e);
   ok('aba "só ver" abre travada com aviso', e.tab === 'entradas' && e.desab > 0 && e.aviso, e);
+  const fin = await C.ev(async () => { ST.tab = 'financeiras'; render(); await new Promise(r => setTimeout(r, 100)); const bt = Array.from(document.querySelectorAll('#content .tab-btn')); const off = bt.filter(b => b.disabled).length; if (bt[1]) bt[1].click(); await new Promise(r => setTimeout(r, 150)); const bt2 = Array.from(document.querySelectorAll('#content .tab-btn')); return { n: bt.length, off, ativo: finTab, off2: bt2.filter(b => b.disabled).length, travados: document.querySelectorAll('#content input:disabled').length }; });
+  ok('"só ver": troca de financeira continua funcionando', fin.n > 1 && fin.off === 0 && fin.ativo === 1 && fin.off2 === 0, fin);
   const e2 = await C.ev(() => { setTab('dre', null); return ST.tab; });
-  ok('aba não liberada não abre', e2 === 'entradas', e2);
+  ok('aba não liberada não abre', e2 !== 'dre', e2);
   const e3 = await C.ev(() => { setTab('saidas', document.querySelector('[data-tab=saidas]')); return { tab: ST.tab, desab: document.querySelectorAll('#content input:disabled').length }; });
   ok('aba "editar" abre normal', e3.tab === 'saidas' && e3.desab === 0, e3);
   await C.fechar();

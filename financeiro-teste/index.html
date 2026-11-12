@@ -3446,6 +3446,7 @@ function _entrarNoApp(user, perfil) {
   _appIniciado = true;
   window._USER = { uid: user.uid, nome: perfil.nome || '', perfil: perfil.perfil, abas: perfil.abas || null };
   _aplicarPermissoes();
+  _vigiarSomenteLeitura();
   const sel = document.getElementById('empresa-sel');
   document.querySelectorAll('#empresa-sel option').forEach(function(o){
     if (o.value && lojas.indexOf(o.value) < 0) { o.hidden = true; o.disabled = true; }
@@ -3540,10 +3541,26 @@ function _aplicarPermissoes() {
   }
   document.querySelectorAll('.sb-item').forEach(function(b){ b.classList.toggle('active', b.dataset.tab === ST.tab); });
 }
+// Controles que só mudam o que aparece na tela (abas de cada financeira, minimizar/expandir, filtros) continuam
+// funcionando em "só ver": são os que apenas trocam uma variável de visualização e redesenham a aba.
+function _soVisual(el) {
+  if (el.classList && el.classList.contains('tab-btn')) return true;
+  return ['onclick', 'onchange', 'oninput'].some(function(a) {
+    const v = el.getAttribute(a);
+    return !!v && /render[A-Za-z]*\(\)\s*;?\s*$/.test(v) && (v.match(/\(/g) || []).length === 1;
+  });
+}
 function _somenteLeitura() {
   const c = document.getElementById('content'); if (!c) return;
-  c.querySelectorAll('button,input,select,textarea').forEach(function(e){ e.disabled = true; });
-  c.insertAdjacentHTML('afterbegin', '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:8px 14px;margin-bottom:14px;font-size:12px;color:var(--muted)">👁 Somente leitura — você pode ver esta aba, mas não alterar.</div>');
+  c.querySelectorAll('button,input,select,textarea').forEach(function(e){ e.disabled = !_soVisual(e); });
+  if (!c.querySelector('[data-ro-aviso]')) c.insertAdjacentHTML('afterbegin', '<div data-ro-aviso="1" style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:8px 14px;margin-bottom:14px;font-size:12px;color:var(--muted)">👁 Somente leitura — você pode ver esta aba, mas não alterar.</div>');
+}
+let _roObs = null;
+function _vigiarSomenteLeitura() {
+  const c = document.getElementById('content'); if (!c || _roObs || !window.MutationObserver) return;
+  // algumas abas se redesenham sozinhas (ex.: trocar de financeira); o travamento é refeito a cada redesenho
+  _roObs = new MutationObserver(function() { if (ST.tab !== 'acessos' && _nivelAba(ST.tab) === 'ver') _somenteLeitura(); });
+  _roObs.observe(c, { childList: true });
 }
 function _blocoPerm(p, u) {
   u = u || {};
