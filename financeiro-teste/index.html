@@ -179,6 +179,7 @@ body.dark-mode .mkBg-high{background:#052010!important}
 <button class="sb-item" data-tab="bancaria" onclick="setTab('bancaria',this)">🏦 Gestão Bancária</button>
 <button class="sb-item" data-tab="estoque" onclick="setTab('estoque',this)">📦 Controle de Estoque</button>
 <button class="sb-item" data-tab="lucro5" onclick="setTab('lucro5',this)">⭐ 5% do Lucro</button>
+<button class="sb-item" data-tab="manutencao" onclick="setTab('manutencao',this)">🔧 Manutenção</button>
     <div class="sb-section">Administração</div>
     <button class="sb-item" data-tab="acessos" onclick="setTab('acessos',this)" style="display:none">🔑 Acessos</button>
     <div class="sb-bottom">
@@ -808,7 +809,7 @@ function changePeriod(){
 
 
 // TAB
-const TITLES={bancaria:'Gestão Bancária',entradas:'Entradas',saidas:'Saídas',financeiras:'Financeiras',verificacao:'Verificação Mensal',markup:'Markup',dre:'DRE — Resultado do Exercício',estoque:'Controle de Estoque',lucro5:'5% do Lucro',acessos:'Acessos'};
+const TITLES={bancaria:'Gestão Bancária',entradas:'Entradas',saidas:'Saídas',financeiras:'Financeiras',verificacao:'Verificação Mensal',markup:'Markup',dre:'DRE — Resultado do Exercício',estoque:'Controle de Estoque',lucro5:'5% do Lucro',acessos:'Acessos',manutencao:'Manutenção'};
 function setTab(tab,btn){
   if(_nivelAba(tab)==='nada')return;
   ST.tab=tab;
@@ -820,7 +821,7 @@ function render(){
   const t=document.getElementById('tb-title');
   t.textContent=TITLES[ST.tab]||'';t.dataset.orig=t.textContent;
   document.getElementById('content').innerHTML='';
-  ({entradas:renderEntradas,saidas:renderSaidas,financeiras:renderFin,verificacao:renderVerif,markup:renderMarkup,dre:renderDRE,bancaria:renderBancaria,estoque:renderEstoque,lucro5:renderLucro5,acessos:renderAcessos}[ST.tab]||function(){})();
+  ({entradas:renderEntradas,saidas:renderSaidas,financeiras:renderFin,verificacao:renderVerif,markup:renderMarkup,dre:renderDRE,bancaria:renderBancaria,estoque:renderEstoque,lucro5:renderLucro5,acessos:renderAcessos,manutencao:renderManut}[ST.tab]||function(){})();
   if(ST.tab!=='acessos'&&_nivelAba(ST.tab)==='ver')_somenteLeitura();
 }
 
@@ -3520,7 +3521,7 @@ function doLogin() {
 // ── ACESSOS (só administrador) ──────────────────────────────────────────────
 // O que cada pessoa vê e edita fica em usuarios/<uid>: { nome, perfil, lojas:{loja:true}, abas:{aba:'ver'|'editar'} }.
 // Esconder abas aqui na tela é só conveniência; quem protege os dados são as regras do banco.
-const _ABAS = {entradas:'Entradas',saidas:'Saídas',financeiras:'Financeiras',verificacao:'Verificação Mensal',markup:'Markup',dre:'DRE',bancaria:'Gestão Bancária',estoque:'Controle de Estoque',lucro5:'5% do Lucro'};
+const _ABAS = {entradas:'Entradas',saidas:'Saídas',financeiras:'Financeiras',verificacao:'Verificação Mensal',markup:'Markup',dre:'DRE',bancaria:'Gestão Bancária',estoque:'Controle de Estoque',lucro5:'5% do Lucro',manutencao:'Manutenção'};
 const _LOJAS_NOMES = {bacaxa:'Bacaxá / Saquarema',araruama:'Araruama (Centro)',araruama_mall:'Araruama (OpenMall)'};
 let _acUsuarios = {};
 function _escA(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -3574,11 +3575,13 @@ function _blocoPerm(p, u) {
       + '</select></div>';
   }).join('');
   return '<div id="'+p+'-perm"><div style="margin:10px 0 6px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Lojas</div><div style="display:flex;gap:18px;flex-wrap:wrap">'+lojas+'</div>'
-    + '<div style="margin:12px 0 6px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Abas</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px">'+abas+'</div></div>';
+    + '<div id="'+p+'-abas"><div style="margin:12px 0 6px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Abas</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px">'+abas+'</div></div></div>';
 }
 function _acTogglePerm(p) {
   const s = document.getElementById(p + '-perfil'), d = document.getElementById(p + '-perm');
-  if (s && d) d.style.display = s.value === 'completo' ? '' : 'none';
+  const ab = document.getElementById(p + '-abas');
+  if (s && d) d.style.display = (s.value === 'completo' || s.value === 'tecnico') ? '' : 'none';
+  if (s && ab) ab.style.display = s.value === 'completo' ? '' : 'none';
 }
 function _acMsg(t, erro) {
   const m = document.getElementById('ac-msg'); if (!m) return;
@@ -3588,6 +3591,12 @@ function _acLer(p) {
   const perfil = document.getElementById(p + '-perfil').value;
   const nome = document.getElementById(p + '-nome').value.trim();
   const reg = { nome: nome, perfil: perfil };
+  if (perfil === 'tecnico') {
+    const lojas = {};
+    Object.keys(_LOJAS_NOMES).forEach(function(l){ if (document.getElementById(p+'-l-'+l).checked) lojas[l] = true; });
+    if (!Object.keys(lojas).length) return { erro: 'Marque ao menos uma loja para o técnico.' };
+    reg.lojas = lojas;
+  }
   if (perfil === 'completo') {
     const lojas = {}, abas = {};
     Object.keys(_LOJAS_NOMES).forEach(function(l){ if (document.getElementById(p+'-l-'+l).checked) lojas[l] = true; });
@@ -3609,7 +3618,7 @@ function renderAcessos() {
   });
 }
 function _perfilOpts(sel) {
-  return [['completo','Acesso por lojas e abas'],['tecnico','Técnico (página própria — em breve)'],['admin','Administrador (acesso total)']]
+  return [['completo','Acesso por lojas e abas'],['tecnico','Técnico (só lança manutenções, em /tecnico/)'],['admin','Administrador (acesso total)']]
     .map(function(o){ return '<option value="'+o[0]+'"'+(sel===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('');
 }
 function _desenharAcessos() {
@@ -3672,6 +3681,116 @@ function acCriar() {
     else if (c === 'auth/weak-password') m = 'Senha fraca demais. Use ao menos 8 caracteres.';
     _acMsg(m, true);
   });
+}
+
+// ── MANUTENÇÃO (controle do técnico; não entra em Entradas nem no DRE) ───────
+// Cada serviço fica em srcapas_manut_<loja>_<ano>_<mes>. Acerto pago fica em srcapas_manutpag_<loja>_<ano>_<mes>
+// (mês da sexta). O técnico só grava "manut"; marcar como pago é só daqui. Regra: técnico = 50% de (valor − peça).
+// Semana de sábado a sexta: sábado e domingo entram na sexta seguinte.
+function _isoLocal(d) { return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+function manutSexta(dataStr) { const d = new Date(dataStr + 'T12:00:00'); d.setDate(d.getDate() + ((5 - d.getDay() + 7) % 7)); return _isoLocal(d); }
+function manutLucro(r) { return Math.round(((+r.valor || 0) - (+r.peca || 0)) * 100) / 100; }
+function manutTec(r) { return Math.round(manutLucro(r) * 50) / 100; }
+function _dmy(s) { return s ? s.slice(8,10) + '/' + s.slice(5,7) + '/' + s.slice(0,4) : ''; }
+function _kManut(tipo, loja, ano, mes) { return 'srcapas_' + tipo + '_' + loja + '_' + ano + '_' + String(mes).padStart(2,'0'); }
+function _lerLocal(k) { try { const v = JSON.parse(localStorage.getItem(k) || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; } }
+function _gravarLocal(k, a) { localStorage.setItem(k, JSON.stringify(a)); flashSaved(); pushToFB(); }
+function _manutAoRedor(tipo) {
+  let o = [];
+  for (let i = -1; i <= 1; i++) { const d = new Date(ST.ano, ST.mes - 1 + i, 1); o = o.concat(_lerLocal(_kManut(tipo, ST.empresa, d.getFullYear(), d.getMonth() + 1))); }
+  return o;
+}
+function _manutPago(sexta) {
+  const y = +sexta.slice(0,4), m = +sexta.slice(5,7);
+  return _lerLocal(_kManut('manutpag', ST.empresa, y, m)).find(function(p){ return p.sexta === sexta; }) || null;
+}
+function renderManut() {
+  const c = document.getElementById('content');
+  const pre = ST.ano + '-' + String(ST.mes).padStart(2, '0');
+  const todos = _manutAoRedor('manut');
+  const doMes = load('manut').slice().sort(function(a, b){ return String(a.data).localeCompare(String(b.data)); });
+  const fmO = ['Pix','Dinheiro','Crédito','Débito','Outro'].map(function(x){ return '<option>' + x + '</option>'; }).join('');
+  const tot = doMes.reduce(function(t, r){ t.v += +r.valor || 0; t.p += +r.peca || 0; t.l += manutLucro(r); t.t += manutTec(r); return t; }, { v: 0, p: 0, l: 0, t: 0 });
+  let h = '<div style="font-size:12px;color:var(--muted);margin-bottom:14px">Controle dos serviços de manutenção desta loja. Não altera Entradas nem o DRE. O técnico recebe 50% do lucro (valor pago − custo da peça), acertado toda sexta-feira.</div>';
+  h += '<div class="form-card"><div class="sec-hdr"><h2>Novo serviço</h2><div class="sec-line"></div></div>'
+    + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px">'
+    + '<div class="fl"><label>Data de conclusão</label><input class="fi" type="date" id="m-dt" value="' + today() + '"></div>'
+    + '<div class="fl"><label>Cliente</label><input class="fi" id="m-cli" autocomplete="off"></div>'
+    + '<div class="fl"><label>Aparelho</label><input class="fi" id="m-apa" autocomplete="off"></div>'
+    + '<div class="fl"><label>Serviço realizado</label><input class="fi" id="m-srv" autocomplete="off"></div>'
+    + '<div class="fl"><label>Valor pago R$</label><input class="fi" type="number" step="0.01" id="m-val"></div>'
+    + '<div class="fl"><label>Forma de pagamento</label><select class="fi" id="m-forma">' + fmO + '</select></div>'
+    + '<div class="fl"><label>Custo da peça R$</label><input class="fi" type="number" step="0.01" id="m-peca" placeholder="0,00"></div>'
+    + '<div class="fl"><label>Observações</label><input class="fi" id="m-obs" autocomplete="off" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addManut()}"></div></div>'
+    + '<div style="margin-top:12px"><button class="btn-gold" onclick="addManut()">Registrar</button></div></div>';
+  h += '<div class="sec-hdr"><h2>Serviços — ' + MESES[ST.mes - 1] + ' ' + ST.ano + '</h2><div class="sec-line"></div></div>';
+  h += '<div class="form-card" style="padding:0;overflow-x:auto"><table><thead><tr><th>Data</th><th>Cliente</th><th>Aparelho</th><th>Serviço</th><th>Forma</th><th style="text-align:right">Valor</th><th style="text-align:right">Peça</th><th style="text-align:right">Lucro</th><th style="text-align:right">Técnico 50%</th><th style="text-align:right">Empresa</th><th>Acerto</th><th></th></tr></thead><tbody>';
+  if (!doMes.length) h += '<tr><td colspan="12" style="text-align:center;color:var(--dim);padding:24px">Nenhum serviço neste mês.</td></tr>';
+  doMes.forEach(function(r) {
+    const sx = manutSexta(r.data), pg = _manutPago(sx);
+    h += '<tr><td>' + _dmy(r.data) + '</td><td>' + _escA(r.cliente) + '</td><td>' + _escA(r.aparelho) + '</td><td>' + _escA(r.servico) + (r.obs ? '<div style="font-size:11px;color:var(--dim)">' + _escA(r.obs) + '</div>' : '') + '</td><td>' + _escA(r.forma) + '</td>'
+      + '<td style="text-align:right">' + fmt(r.valor) + '</td><td style="text-align:right">' + fmt(r.peca) + '</td><td style="text-align:right">' + fmt(manutLucro(r)) + '</td><td style="text-align:right"><b>' + fmt(manutTec(r)) + '</b></td><td style="text-align:right">' + fmt(manutLucro(r) - manutTec(r)) + '</td>'
+      + '<td>' + _dmy(sx) + (pg ? ' <span class="badge b-ok">pago</span>' : '') + '</td><td><button class="btn-sm" onclick="delManut(\'' + _escA(r.id) + '\')">×</button></td></tr>';
+  });
+  if (doMes.length) h += '<tr style="font-weight:700"><td colspan="5">TOTAL</td><td style="text-align:right">' + fmt(tot.v) + '</td><td style="text-align:right">' + fmt(tot.p) + '</td><td style="text-align:right">' + fmt(tot.l) + '</td><td style="text-align:right">' + fmt(tot.t) + '</td><td style="text-align:right">' + fmt(tot.l - tot.t) + '</td><td></td><td></td></tr>';
+  h += '</tbody></table></div>';
+  // acerto semanal: semanas (sextas) com serviços deste mês
+  const sextas = {};
+  doMes.forEach(function(r){ sextas[manutSexta(r.data)] = true; });
+  const ks = Object.keys(sextas).sort();
+  h += '<div class="sec-hdr" style="margin-top:22px"><h2>Acerto semanal do técnico</h2><div class="sec-line"></div></div>';
+  if (!ks.length) h += '<div class="empty">Sem semanas neste mês.</div>';
+  const bancos = '<option value="pagbank">PagBank</option>' + (getStoreConfig().temInfinitePay ? '<option value="infinitepay">InfinitePay</option>' : '') + '<option value="malote">Malote</option>';
+  const formas = FORMAS.map(function(x){ return '<option>' + x + '</option>'; }).join('');
+  ks.forEach(function(sx, i) {
+    const srv = todos.filter(function(r){ return manutSexta(r.data) === sx; });
+    const valor = Math.round(srv.reduce(function(s, r){ return s + manutTec(r); }, 0) * 100) / 100;
+    const pg = _manutPago(sx);
+    h += '<div class="form-card" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:space-between"><div><strong>Sexta ' + _dmy(sx) + '</strong> <span style="color:var(--muted);font-size:12px">— ' + srv.length + ' serviço(s)</span><div style="font-size:20px;font-weight:700;margin-top:2px">' + fmt(valor) + '</div></div>';
+    if (pg) h += '<div style="display:flex;align-items:center;gap:10px"><span class="badge b-ok">✓ Pago em ' + _dmy(pg.pagoEm) + '</span><button class="btn-ghost" id="mp-d' + i + '" onclick="desfazerSemanaManut(\'' + sx + '\',\'mp-d' + i + '\')">Desfazer</button></div>';
+    else h += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><select class="fi" id="mp-b' + i + '" style="width:auto">' + bancos + '</select><select class="fi" id="mp-f' + i + '" style="width:auto">' + formas + '</select><button class="btn-gold" onclick="pagarSemanaManut(\'' + sx + '\',' + valor + ',' + i + ')">Pagar semana</button></div>';
+    h += '</div>';
+  });
+  c.innerHTML = h;
+}
+function addManut() {
+  const r = { id: uuid(), data: document.getElementById('m-dt').value, cliente: document.getElementById('m-cli').value.trim(), aparelho: document.getElementById('m-apa').value.trim(), servico: document.getElementById('m-srv').value.trim(), valor: +document.getElementById('m-val').value, forma: document.getElementById('m-forma').value, peca: +document.getElementById('m-peca').value || 0, obs: document.getElementById('m-obs').value.trim(), por: (window._USER && window._USER.nome) || '' };
+  if (!r.data) { notify('Informe a data', 'err'); return; }
+  if (!r.cliente || !r.servico) { notify('Informe o cliente e o serviço', 'err'); return; }
+  if (!(r.valor > 0)) { notify('Informe o valor pago', 'err'); return; }
+  if (r.peca > r.valor) { notify('Custo da peça maior que o valor', 'err'); return; }
+  if (_manutPago(manutSexta(r.data))) { notify('O acerto dessa semana já foi pago. Desfaça o pagamento para incluir.', 'err'); return; }
+  const k = _kManut('manut', ST.empresa, +r.data.slice(0,4), +r.data.slice(5,7));
+  const a = _lerLocal(k); a.push(r); a.sort(function(x, y){ return String(x.data).localeCompare(String(y.data)); });
+  _gravarLocal(k, a); notify('Serviço registrado!', 'ok'); renderManut();
+}
+function delManut(id) {
+  const r = load('manut').find(function(x){ return x.id === id; }); if (!r) return;
+  if (_manutPago(manutSexta(r.data))) { notify('Acerto já pago. Desfaça o pagamento antes.', 'err'); return; }
+  if (!confirm('Remover este serviço?')) return;
+  save('manut', load('manut').filter(function(x){ return x.id !== id; })); renderManut();
+}
+function pagarSemanaManut(sexta, valor, i) {
+  if (_manutPago(sexta)) { notify('Esta semana já está paga', 'err'); return; }
+  if (!(valor > 0)) { notify('Semana sem valor a pagar', 'err'); return; }
+  const y = +sexta.slice(0,4), m = +sexta.slice(5,7);
+  const saidaId = uuid();
+  const ks = _kManut('saidas', ST.empresa, y, m), kp = _kManut('manutpag', ST.empresa, y, m);
+  const sd = _lerLocal(ks);
+  sd.push({ id: saidaId, data: sexta, cat: 'Pessoal', forma: document.getElementById('mp-f' + i).value, banco: document.getElementById('mp-b' + i).value, val: valor, desc: 'Técnico — acerto semanal de manutenção (sexta ' + _dmy(sexta) + ')', manutSexta: sexta });
+  sd.sort(function(a, b){ return String(a.data).localeCompare(String(b.data)); });
+  _gravarLocal(ks, sd);
+  const pg = _lerLocal(kp); pg.push({ id: uuid(), sexta: sexta, valor: valor, pagoEm: today(), saidaId: saidaId }); _gravarLocal(kp, pg);
+  notify('Semana paga e lançada nas Saídas!', 'ok'); renderManut();
+}
+function desfazerSemanaManut(sexta, btnId) {
+  const b = document.getElementById(btnId); if (!b) return;
+  if (b.dataset.ok !== '1') { b.dataset.ok = '1'; b.textContent = 'Confirmar'; setTimeout(function(){ if (b) { b.dataset.ok = ''; b.textContent = 'Desfazer'; } }, 5000); return; }
+  const y = +sexta.slice(0,4), m = +sexta.slice(5,7), kp = _kManut('manutpag', ST.empresa, y, m), ks = _kManut('saidas', ST.empresa, y, m);
+  const pg = _lerLocal(kp).find(function(p){ return p.sexta === sexta; }); if (!pg) return;
+  _gravarLocal(ks, _lerLocal(ks).filter(function(s){ return s.id !== pg.saidaId; }));
+  _gravarLocal(kp, _lerLocal(kp).filter(function(p){ return p.sexta !== sexta; }));
+  notify('Pagamento desfeito e Saída removida', 'ok'); renderManut();
 }
 
 function doLogout() {

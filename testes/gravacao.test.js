@@ -11,6 +11,7 @@ const { chromium, Servidor, abrirCliente, espera, canon } = require('./apoio');
 const RAIZ_REPO = path.join(__dirname, '..');
 // PAGINA=/caminho/outro.html permite rodar os mesmos testes contra outra versão da página.
 const NOVO = fs.readFileSync(process.env.PAGINA || path.join(RAIZ_REPO, 'financeiro', 'index.html'), 'utf8');
+const TEC = fs.readFileSync(path.join(RAIZ_REPO, 'tecnico-teste', 'index.html'), 'utf8');
 // Versão antiga (a que estava em produção antes da correção), lida do histórico do Git.
 const COMMIT_ANTIGO = '46671b8';
 let ANTIGO = null;
@@ -392,6 +393,60 @@ T('R15', 'permissões por aba: esconde, deixa só ler, e só o admin vê "Acesso
   const l = await A.ev(() => document.getElementById('content').innerText);
   ok('página Acessos lista os usuários e o formulário de novo', l.toLowerCase().includes('novo usuário') && l.toLowerCase().includes('teste'), l.slice(0, 200));
   await A.fechar();
+});
+
+T('R16', 'manutenção: 50% do lucro, semana sáb→sex, pagar semana cria a Saída (e desfazer remove)', async (browser, ok) => {
+  const srv = new Servidor(); srv.raiz = base();
+  const A = await abrirCliente(browser, srv, 'A', NOVO); await espera(1200);
+  const d = await A.ev(() => ({ sab: manutSexta('2026-09-26'), dom: manutSexta('2026-09-27'), seg: manutSexta('2026-09-28'), sex: manutSexta('2026-10-02'), tec: manutTec({ valor: 240, peca: 11.4 }), lucro: manutLucro({ valor: 350, peca: 85 }) }));
+  ok('sábado e domingo vão para a sexta seguinte; sexta fica na própria', d.sab === '2026-10-02' && d.dom === '2026-10-02' && d.seg === '2026-10-02' && d.sex === '2026-10-02', d);
+  ok('técnico recebe 50% do lucro (valor − peça)', d.tec === 114.3 && d.lucro === 265, d);
+  const r = await A.ev(async () => {
+    const hoje = new Date(); ST.ano = hoje.getFullYear(); ST.mes = hoje.getMonth() + 1; ST.tab = 'manutencao'; render();
+    const dt = today();
+    document.getElementById('m-dt').value = dt; document.getElementById('m-cli').value = 'Fulano'; document.getElementById('m-srv').value = 'troca de tela';
+    document.getElementById('m-val').value = '300'; document.getElementById('m-peca').value = '100'; addManut();
+    const sx = manutSexta(dt); const antes = { n: load('manut').length, pago: !!_manutPago(sx) };
+    pagarSemanaManut(sx, 100, 0);
+    const saida = load('saidas').filter(x => x.manutSexta === sx);
+    const depois = !!_manutPago(sx);
+    const bloq = (function(){ const n = load('manut').length; document.getElementById('m-cli').value = 'Outro'; document.getElementById('m-srv').value = 'x'; document.getElementById('m-val').value = '50'; addManut(); return load('manut').length === n; })();
+    const bt = document.querySelector('[id^=mp-d]'); if (bt) { bt.click(); bt.click(); }
+    return { antes, saida: saida.map(x => ({ cat: x.cat, val: x.val })), depois, bloq, desfeito: !_manutPago(sx), saidaSumiu: load('saidas').filter(x => x.manutSexta === sx).length === 0 };
+  });
+  ok('registrou o serviço e a semana estava pendente', r.antes.n === 1 && !r.antes.pago, r);
+  ok('pagar semana cria 1 Saída "Pessoal" de R$ 100 e marca como paga', r.saida.length === 1 && r.saida[0].cat === 'Pessoal' && r.saida[0].val === 100 && r.depois, r);
+  ok('semana paga não aceita novo serviço', r.bloq, r);
+  ok('desfazer remove o pagamento e a Saída', r.desfeito && r.saidaSumiu, r);
+  await A.fechar();
+});
+
+T('R17', 'página do técnico: lança por loja, vê total da semana, não altera semana paga', async (browser, ok) => {
+  const srv = new Servidor(); srv.raiz = base();
+  const T = await abrirCliente(browser, srv, 'T', TEC, { uid: 'T1', perfil: { nome: 'Emerson', perfil: 'tecnico', lojas: { bacaxa: true, araruama: true } }, url: 'https://www.mrcapas.com.br/tecnico-teste/' }); await espera(1500);
+  const a = await T.ev(() => ({ app: document.getElementById('app').style.display, lojas: Array.from(document.querySelectorAll('#f-loja option')).map(o => o.value) }));
+  ok('técnico entra e só vê as lojas dele', a.app === 'block' && JSON.stringify(a.lojas) === JSON.stringify(['bacaxa', 'araruama']), a);
+  const r = await T.ev(async () => {
+    const dt = hojeISO(); const sx = sexta(dt);
+    const pre = (l) => { document.getElementById('f-loja').value = l; document.getElementById('f-data').value = dt; document.getElementById('f-cli').value = 'Maria Silva'; document.getElementById('f-srv').value = 'troca de tela'; document.getElementById('f-val').value = '300'; document.getElementById('f-peca').value = '100'; };
+    pre('bacaxa'); adicionar(); await new Promise(r => setTimeout(r, 700));
+    pre('araruama'); adicionar(); await new Promise(r => setTimeout(r, 700));
+    return { total: document.getElementById('k-total').textContent.replace(/\s/g, ' '), qtd: document.getElementById('k-qtd').textContent, linhas: document.querySelectorAll('#lista tr').length, sx };
+  });
+  ok('lançou em duas lojas; total da semana soma R$ 100 + R$ 100', /200,00/.test(r.total) && r.qtd === '2' && r.linhas === 2, r);
+  const noServ = JSON.stringify(srv.get('srcapas'));
+  ok('cada serviço foi gravado na loja certa', JSON.stringify(srv.get('srcapas/bacaxa')).includes('Maria Silva') && JSON.stringify(srv.get('srcapas/araruama')).includes('Maria Silva'), noServ.slice(0, 200));
+  // semana paga: bloqueia
+  const d = new Date(), mm = d.getFullYear() + '_' + String(d.getMonth() + 1).padStart(2, '0');
+  const sx = r.sx, mp = sx.slice(0, 4) + '_' + sx.slice(5, 7);
+  srv.set('srcapas/bacaxa/srcapas_manutpag_bacaxa_' + mp, [{ id: 'p1', sexta: sx, valor: 100, pagoEm: sx }], 'admin');
+  const b = await T.ev(async () => { await carregar(); const n0 = DADOS.length; document.getElementById('f-loja').value = 'bacaxa'; document.getElementById('f-data').value = hojeISO(); document.getElementById('f-cli').value = 'X'; document.getElementById('f-srv').value = 'y'; document.getElementById('f-val').value = '50'; adicionar(); await new Promise(r => setTimeout(r, 500)); await carregar(); return { n0, n1: DADOS.length, pago: document.getElementById('lista').innerText.includes('pago'), msg: document.getElementById('msg').textContent }; });
+  ok('semana já paga: não aceita novo serviço e mostra "pago"', b.n0 === b.n1 && b.pago && /já foi pago/.test(b.msg), b);
+  await T.fechar();
+  const N = await abrirCliente(browser, srv, 'N', TEC, { uid: 'C9', perfil: { nome: 'Paiva', perfil: 'completo', lojas: { bacaxa: true } }, url: 'https://www.mrcapas.com.br/tecnico-teste/' }); await espera(1200);
+  const n = await N.ev(() => ({ app: document.getElementById('app').style.display, erro: document.getElementById('l-err').textContent }));
+  ok('perfil que não é técnico/admin não entra na página do técnico', n.app === 'none' && /não tem acesso/.test(n.erro), n);
+  await N.fechar();
 });
 
 T('R13', 'sair: envia o pendente e volta para a tela de login', async (browser, ok) => {

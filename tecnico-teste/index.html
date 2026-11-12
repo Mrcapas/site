@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MR. CAPAS — Manutenções</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#F4F6FB;--card:#fff;--text:#1A1F2E;--muted:#6B7385;--border:#DDE2EE;--gold:#B8902A;--ok:#1E8449;--red:#C0392B}
+@media(prefers-color-scheme:dark){:root{--bg:#0A0A0A;--card:#141414;--text:#EBEBEB;--muted:#8A8A8A;--border:#262626;--gold:#C9A850;--ok:#4ADE80;--red:#F87171}}
+body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;min-height:100vh}
+h1{font-size:18px;font-weight:800;letter-spacing:.02em}
+h2{font-size:14px;margin-bottom:10px}
+.wrap{max-width:900px;margin:0 auto;padding:14px 16px 60px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px}
+label{display:block;font-size:11px;color:var(--muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:.06em}
+input,select{width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:14px;font-family:inherit}
+button{font-family:inherit;cursor:pointer}
+.btn{background:var(--gold);color:#000;border:none;border-radius:6px;padding:10px 18px;font-weight:700;font-size:13px}
+.btn:disabled{opacity:.5}
+.ghost{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:7px 12px;font-size:12px}
+.x{background:none;border:none;color:var(--red);font-size:18px;padding:0 6px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:8px;border-bottom:1px solid var(--border);vertical-align:top}
+.r{text-align:right;white-space:nowrap}
+.tw{overflow-x:auto}
+.pago{color:var(--ok);font-weight:700}.pend{color:var(--gold);font-weight:700}
+#msg{font-size:13px;font-weight:600;margin-bottom:10px;display:none}
+.kpi{display:flex;gap:14px;flex-wrap:wrap}
+.kpi div{flex:1;min-width:150px}
+.kpi b{display:block;font-size:20px;margin-top:2px}
+#login{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:16px}
+#login .card{width:100%;max-width:340px;margin:0}
+</style>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+</head>
+<body>
+
+<div id="login" style="display:none">
+  <div class="card">
+    <h1 style="margin-bottom:4px">MR. CAPAS</h1>
+    <div style="color:var(--muted);margin-bottom:20px;font-size:13px">Lançamento de manutenções</div>
+    <div style="margin-bottom:12px"><label>Usuário</label><input id="l-user" autocomplete="username" autocapitalize="none" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('l-pass').focus()}"></div>
+    <div style="margin-bottom:14px"><label>Senha</label><input id="l-pass" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter'){event.preventDefault();entrar()}"></div>
+    <div id="l-err" style="color:var(--red);font-size:12px;margin-bottom:10px;display:none"></div>
+    <button class="btn" style="width:100%" id="l-btn" onclick="entrar()">Entrar</button>
+  </div>
+</div>
+
+<div class="wrap" id="app" style="display:none">
+  <div class="top">
+    <h1>MR. CAPAS · Manutenções <span id="quem" style="font-weight:400;font-size:12px;color:var(--muted)"></span></h1>
+    <button class="ghost" onclick="sair()">↩ Sair</button>
+  </div>
+  <div id="msg"></div>
+
+  <div class="card">
+    <div class="kpi">
+      <div><label>Semana atual (acerto na sexta <span id="k-sexta"></span>)</label><b id="k-total">—</b></div>
+      <div><label>Serviços na semana</label><b id="k-qtd">—</b></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Novo serviço</h2>
+    <div class="grid">
+      <div><label>Data de conclusão</label><input type="date" id="f-data"></div>
+      <div><label>Loja</label><select id="f-loja"></select></div>
+      <div><label>Cliente</label><input id="f-cli" autocomplete="off"></div>
+      <div><label>Aparelho</label><input id="f-apa" autocomplete="off"></div>
+      <div><label>Serviço realizado</label><input id="f-srv" autocomplete="off"></div>
+      <div><label>Valor pago pelo cliente R$</label><input id="f-val" type="number" step="0.01" inputmode="decimal"></div>
+      <div><label>Forma de pagamento</label><select id="f-forma"></select></div>
+      <div><label>Custo da peça R$</label><input id="f-peca" type="number" step="0.01" inputmode="decimal" placeholder="0,00"></div>
+      <div style="grid-column:1/-1"><label>Observações</label><input id="f-obs" autocomplete="off"></div>
+    </div>
+    <div style="margin-top:12px"><button class="btn" id="f-btn" onclick="adicionar()">Registrar serviço</button></div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+      <h2 style="margin:0">Serviços do mês</h2>
+      <div style="display:flex;gap:8px"><select id="s-mes" onchange="carregar()"></select><select id="s-ano" onchange="carregar()"></select></div>
+    </div>
+    <div class="tw"><table><thead><tr><th>Data</th><th>Loja</th><th>Cliente</th><th>Aparelho</th><th>Serviço</th><th class="r">Valor</th><th class="r">Peça</th><th class="r">Seu valor</th><th>Acerto</th><th></th></tr></thead><tbody id="lista"></tbody></table></div>
+  </div>
+
+  <div class="card">
+    <h2>Acertos semanais</h2>
+    <div class="tw"><table><thead><tr><th>Sexta</th><th>Loja</th><th class="r">Serviços</th><th class="r">A receber</th><th>Situação</th></tr></thead><tbody id="semanas"></tbody></table></div>
+  </div>
+</div>
+
+<script>
+const _EH_TESTE = location.pathname.indexOf('teste') >= 0;
+const _FB_CFG = _EH_TESTE ? {
+  apiKey:'AIzaSyAGAla_xE1417YxqjP6NWddxhtrp3REFgU', authDomain:'finan-mrcapas-teste.firebaseapp.com',
+  databaseURL:'https://finan-mrcapas-teste-default-rtdb.firebaseio.com', projectId:'finan-mrcapas-teste'
+} : {
+  apiKey:'AIzaSyAsTJTkvOdMAnAhhMc6taoqviqI6pXyEvg', authDomain:'finan-mrcapas.firebaseapp.com',
+  databaseURL:'https://finan-mrcapas-default-rtdb.firebaseio.com', projectId:'finan-mrcapas'
+};
+firebase.initializeApp(_FB_CFG);
+const _db = firebase.database();
+const _RAIZ = 'srcapas';
+const LOJAS = {bacaxa:'Bacaxá', araruama:'Araruama (Centro)', araruama_mall:'Araruama (OpenMall)'};
+const FORMAS = ['Pix','Dinheiro','Crédito','Débito','Outro'];
+const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+const $ = function(id){ return document.getElementById(id); };
+const brl = new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'});
+const fmt = function(n){ return brl.format(n || 0); };
+const esc = function(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
+const uuid = function(){ return Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-3); };
+let EU = null, MINHAS = [], DADOS = [], PAGOS = {};
+
+// ── regras do acerto (as mesmas do sistema principal) ──
+function isoLocal(d){ return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+function hojeISO(){ return isoLocal(new Date()); }
+// sábado a sexta: sábado e domingo entram na sexta seguinte
+function sexta(dataStr){ const d = new Date(dataStr + 'T12:00:00'); d.setDate(d.getDate() + ((5 - d.getDay() + 7) % 7)); return isoLocal(d); }
+function lucro(r){ return Math.round(((+r.valor || 0) - (+r.peca || 0)) * 100) / 100; }
+function tecnico(r){ return Math.round(lucro(r) * 50) / 100; }
+function dmy(s){ return s ? s.slice(8,10) + '/' + s.slice(5,7) + '/' + s.slice(0,4) : ''; }
+function chaveManut(tipo, loja, ano, mes){ return 'srcapas_' + tipo + '_' + loja + '_' + ano + '_' + String(mes).padStart(2,'0'); }
+function mesesAoRedor(ano, mes){ const o = []; for (let i = -1; i <= 1; i++) { const d = new Date(ano, mes - 1 + i, 1); o.push({ano: d.getFullYear(), mes: d.getMonth() + 1}); } return o; }
+function aviso(t, erro){ const m = $('msg'); m.textContent = t || ''; m.style.display = t ? 'block' : 'none'; m.style.color = erro ? 'var(--red)' : 'var(--ok)'; if (t) setTimeout(function(){ if (m.textContent === t) m.style.display = 'none'; }, 5000); }
+function lista(v){ return Array.isArray(v) ? v.filter(Boolean) : (v && typeof v === 'object' ? Object.keys(v).map(function(k){ return v[k]; }) : []); }
+
+// ── dados ──
+function lerChave(loja, k){ return _db.ref(_RAIZ + '/' + loja + '/' + k).once('value').then(function(s){ return lista(s.val()); }); }
+function carregar(){
+  const ano = +$('s-ano').value, mes = +$('s-mes').value;
+  const jobs = [];
+  DADOS = []; PAGOS = {};
+  MINHAS.forEach(function(loja){
+    mesesAoRedor(ano, mes).forEach(function(p){
+      jobs.push(lerChave(loja, chaveManut('manut', loja, p.ano, p.mes)).then(function(a){ a.forEach(function(r){ r.loja = loja; DADOS.push(r); }); }));
+      jobs.push(lerChave(loja, chaveManut('manutpag', loja, p.ano, p.mes)).then(function(a){ a.forEach(function(r){ PAGOS[loja + '|' + r.sexta] = r; }); }));
+    });
+  });
+  return Promise.all(jobs).then(desenhar).catch(function(e){ aviso('Não foi possível carregar: ' + (e && e.message), true); });
+}
+function transacao(loja, dataISO, fn){
+  const d = new Date(dataISO + 'T12:00:00');
+  return _db.ref(_RAIZ + '/' + loja + '/' + chaveManut('manut', loja, d.getFullYear(), d.getMonth() + 1)).transaction(function(cur){
+    const a = lista(cur).slice(); const novo = fn(a); return novo.length ? novo : null;
+  });
+}
+function adicionar(){
+  const r = { id: uuid(), data: $('f-data').value, loja: $('f-loja').value, cliente: $('f-cli').value.trim(), aparelho: $('f-apa').value.trim(), servico: $('f-srv').value.trim(), valor: +$('f-val').value, forma: $('f-forma').value, peca: +$('f-peca').value || 0, obs: $('f-obs').value.trim(), por: EU.nome || '' };
+  if (!r.data) return aviso('Informe a data.', true);
+  if (!r.cliente || !r.servico) return aviso('Informe o cliente e o serviço realizado.', true);
+  if (!(r.valor > 0)) return aviso('Informe o valor pago pelo cliente.', true);
+  if (r.peca > r.valor) return aviso('O custo da peça não pode ser maior que o valor do serviço.', true);
+  if (PAGOS[r.loja + '|' + sexta(r.data)]) return aviso('O acerto dessa semana já foi pago. Fale com o administrador.', true);
+  $('f-btn').disabled = true;
+  const loja = r.loja; delete r.loja;
+  transacao(loja, r.data, function(a){ a.push(r); a.sort(function(x, y){ return String(x.data).localeCompare(String(y.data)); }); return a; })
+    .then(function(){ ['f-cli','f-apa','f-srv','f-val','f-peca','f-obs'].forEach(function(i){ $(i).value = ''; }); aviso('Serviço registrado.'); return carregar(); })
+    .catch(function(e){ aviso('Não foi possível registrar: ' + (e && e.message), true); })
+    .then(function(){ $('f-btn').disabled = false; $('f-cli').focus(); });
+}
+function remover(id, loja, data){
+  if (PAGOS[loja + '|' + sexta(data)]) return aviso('Esse acerto já foi pago e não pode mais ser alterado.', true);
+  if (!confirm('Remover este serviço?')) return;
+  transacao(loja, data, function(a){ return a.filter(function(r){ return r.id !== id; }); })
+    .then(carregar).catch(function(e){ aviso('Não foi possível remover: ' + (e && e.message), true); });
+}
+
+// ── tela ──
+function desenhar(){
+  const ano = +$('s-ano').value, mes = +$('s-mes').value, pre = ano + '-' + String(mes).padStart(2,'0');
+  const doMes = DADOS.filter(function(r){ return String(r.data).slice(0, 7) === pre; }).sort(function(a, b){ return String(b.data).localeCompare(String(a.data)); });
+  $('lista').innerHTML = doMes.length ? doMes.map(function(r){
+    const pg = PAGOS[r.loja + '|' + sexta(r.data)];
+    return '<tr><td>' + dmy(r.data) + '</td><td>' + esc(LOJAS[r.loja] || r.loja) + '</td><td>' + esc(r.cliente) + '</td><td>' + esc(r.aparelho) + '</td><td>' + esc(r.servico) + (r.obs ? '<div style="font-size:11px;color:var(--muted)">' + esc(r.obs) + '</div>' : '') + '</td><td class="r">' + fmt(r.valor) + '</td><td class="r">' + fmt(r.peca) + '</td><td class="r"><b>' + fmt(tecnico(r)) + '</b></td><td>' + dmy(sexta(r.data)) + '</td><td>' + (pg ? '<span class="pago">✓ pago</span>' : '<button class="x" title="Remover" onclick="remover(\'' + esc(r.id) + '\',\'' + r.loja + '\',\'' + r.data + '\')">×</button>') + '</td></tr>';
+  }).join('') : '<tr><td colspan="10" style="color:var(--muted);text-align:center;padding:20px">Nenhum serviço neste mês.</td></tr>';
+  // semanas (todas as que aparecem nos dados carregados)
+  const sem = {};
+  DADOS.forEach(function(r){ const s = sexta(r.data), k = s + '|' + r.loja; (sem[k] = sem[k] || { s: s, loja: r.loja, n: 0, tot: 0 }); sem[k].n++; sem[k].tot += tecnico(r); });
+  const ks = Object.keys(sem).sort().reverse();
+  $('semanas').innerHTML = ks.length ? ks.map(function(k){
+    const w = sem[k], pg = PAGOS[w.loja + '|' + w.s];
+    return '<tr><td>' + dmy(w.s) + '</td><td>' + esc(LOJAS[w.loja] || w.loja) + '</td><td class="r">' + w.n + '</td><td class="r"><b>' + fmt(w.tot) + '</b></td><td>' + (pg ? '<span class="pago">✓ Pago em ' + dmy(pg.pagoEm) + '</span>' : '<span class="pend">Pendente</span>') + '</td></tr>';
+  }).join('') : '<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:20px">Sem acertos ainda.</td></tr>';
+  // semana atual
+  const sx = sexta(hojeISO()); $('k-sexta').textContent = dmy(sx);
+  const dessa = DADOS.filter(function(r){ return sexta(r.data) === sx; });
+  $('k-total').textContent = fmt(dessa.reduce(function(s, r){ return s + tecnico(r); }, 0));
+  $('k-qtd').textContent = dessa.length;
+}
+
+// ── entrada ──
+function msgLogin(t){ const e = $('l-err'); e.textContent = t || ''; e.style.display = t ? 'block' : 'none'; }
+function mostrarLogin(t){ $('app').style.display = 'none'; $('login').style.display = 'flex'; $('l-pass').value = ''; msgLogin(t); }
+function entrar(){
+  const u = $('l-user').value.trim().toLowerCase().replace(/\s+/g, ''), p = $('l-pass').value;
+  if (!u || !p) return msgLogin('Informe usuário e senha.');
+  msgLogin(''); $('l-btn').disabled = true;
+  firebase.auth().signInWithEmailAndPassword(u + '@mrcapas.local', p).catch(function(e){
+    const c = (e && e.code) || '', m = c === 'auth/too-many-requests' ? 'Muitas tentativas. Aguarde alguns minutos.' : c === 'auth/network-request-failed' ? 'Sem conexão com a internet.' : 'Usuário ou senha incorretos.';
+    $('l-pass').value = ''; msgLogin(m);
+  }).then(function(){ $('l-btn').disabled = false; });
+}
+function sair(){ const f = function(){ location.reload(); }; firebase.auth().signOut().then(f, f); setTimeout(f, 2500); }
+function iniciar(perfil){
+  EU = perfil;
+  MINHAS = Object.keys(LOJAS).filter(function(l){ return perfil.perfil === 'admin' || (perfil.lojas && perfil.lojas[l] === true); });
+  if (!MINHAS.length) { firebase.auth().signOut(); return mostrarLogin('Nenhuma loja liberada para este usuário.'); }
+  $('login').style.display = 'none'; $('app').style.display = 'block';
+  $('quem').textContent = perfil.nome ? '— ' + perfil.nome : '';
+  $('f-loja').innerHTML = MINHAS.map(function(l){ return '<option value="' + l + '">' + esc(LOJAS[l]) + '</option>'; }).join('');
+  $('f-forma').innerHTML = FORMAS.map(function(f){ return '<option>' + f + '</option>'; }).join('');
+  $('f-data').value = hojeISO();
+  const h = new Date(), y = h.getFullYear();
+  $('s-mes').innerHTML = MESES.map(function(m, i){ return '<option value="' + (i+1) + '"' + (i === h.getMonth() ? ' selected' : '') + '>' + m + '</option>'; }).join('');
+  $('s-ano').innerHTML = [y-1, y, y+1].map(function(v){ return '<option' + (v === y ? ' selected' : '') + '>' + v + '</option>'; }).join('');
+  carregar();
+}
+try { firebase.auth().setPersistence(firebase.auth.Auth.Persistence.SESSION); } catch (e) {}
+let _entrou = false;
+firebase.auth().onAuthStateChanged(function(user){
+  if (!user) { _entrou = false; return mostrarLogin(''); }
+  _db.ref('usuarios/' + user.uid).once('value').then(function(s){
+    const p = s.val();
+    if (!p || (p.perfil !== 'tecnico' && p.perfil !== 'admin')) { firebase.auth().signOut(); return mostrarLogin('Este usuário não tem acesso a esta página.'); }
+    if (!_entrou) { _entrou = true; iniciar(p); }
+  }).catch(function(e){ firebase.auth().signOut(); mostrarLogin('Não foi possível verificar o acesso: ' + (e && e.message)); });
+});
+</script>
+</body>
+</html>

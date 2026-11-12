@@ -12,7 +12,11 @@
     "srcapas": {
       "$loja": {
         ".read": "auth != null && (root.child('usuarios').child(auth.uid).child('perfil').val() === 'admin' || (root.child('usuarios').child(auth.uid).child('perfil').val() === 'completo' && root.child('usuarios').child(auth.uid).child('lojas').child($loja).val() === true))",
-        ".write": "auth != null && (root.child('usuarios').child(auth.uid).child('perfil').val() === 'admin' || (root.child('usuarios').child(auth.uid).child('perfil').val() === 'completo' && root.child('usuarios').child(auth.uid).child('lojas').child($loja).val() === true))"
+        ".write": "auth != null && (root.child('usuarios').child(auth.uid).child('perfil').val() === 'admin' || (root.child('usuarios').child(auth.uid).child('perfil').val() === 'completo' && root.child('usuarios').child(auth.uid).child('lojas').child($loja).val() === true))",
+        "$chave": {
+          ".read": "auth != null && (root.child('usuarios').child(auth.uid).child('perfil').val() === 'tecnico' && root.child('usuarios').child(auth.uid).child('lojas').child($loja).val() === true) && ($chave.beginsWith('srcapas_manut_') || $chave.beginsWith('srcapas_manutpag_'))",
+          ".write": "auth != null && (root.child('usuarios').child(auth.uid).child('perfil').val() === 'tecnico' && root.child('usuarios').child(auth.uid).child('lojas').child($loja).val() === true) && $chave.beginsWith('srcapas_manut_')"
+        }
       }
     },
     "srcapas_resgate": {
